@@ -1,0 +1,148 @@
+# Environment Variables and Sensitive Data
+.env
+.env.local
+.env.*.local
+*.key
+secrets.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+pyvenv.cfg
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.spyderproject
+.spyproject
+.ropeproject
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.sqlite
+
+# Log Files
+*.log
+logs/
+*.log.*
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OCR and Processing Files
+uploads/
+processed/
+*.pdf.txt
+*.pdf.json
+
+# Streamlit
+.streamlit/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Coverage Reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Backup Files
+*.bak
+*.backup
+*~
+
+# Package Files
+*.tar.gz
+*.zip
+*.7z
+
+# API Keys and Credentials (additional safety)
+*api_key*
+*secret*
+*token*
+credentials.json
+service-account*.json
+
+# Application Specific
+data/questions.db
+data/*.csv
+data/*.json
+data/*.xlsx
+exports/
+backups/
+
+# Node modules (in case of any JS dependencies)
+node_modules/
+
+# SSL certificates
+*.pem
+*.crt
+*.cert
+*.p12
+
+# Config overrides
+config_override.py
+local_settings.py
