@@ -1,0 +1,10 @@
+streamlit
+pytesseract
+pdf2image
+Pillow
+google-generativeai
+python-dotenv
+pandas
+numpy
+requests
+openpyxl
