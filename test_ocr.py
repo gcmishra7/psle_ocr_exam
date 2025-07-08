@@ -17,15 +17,45 @@ def test_dependencies():
         import pytesseract
         version = pytesseract.get_tesseract_version()
         print(f"✅ Tesseract {version} is working")
+        
+        # Try to find tesseract executable
+        import subprocess
+        try:
+            result = subprocess.run(['tesseract', '--version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print(f"✅ Tesseract executable found in PATH")
+            else:
+                print(f"⚠️  Tesseract executable issue")
+        except Exception as e:
+            print(f"⚠️  Tesseract PATH issue: {e}")
+            
     except Exception as e:
         print(f"❌ Tesseract error: {e}")
         print("   Solution: brew install tesseract")
         return False
     
-    # Test 2: pdf2image
+    # Test 2: pdf2image and Poppler
     try:
         from pdf2image import convert_from_path
         print("✅ pdf2image is available")
+        
+        # Test if poppler is available
+        import subprocess
+        try:
+            result = subprocess.run(['pdftoppm', '-h'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print("✅ Poppler (pdftoppm) is available")
+            else:
+                print("❌ Poppler (pdftoppm) not found")
+                print("   Solution: brew install poppler")
+                return False
+        except Exception as e:
+            print(f"❌ Poppler error: {e}")
+            print("   Solution: brew install poppler")
+            return False
+            
     except Exception as e:
         print(f"❌ pdf2image error: {e}")
         print("   Solution: brew install poppler")
@@ -47,6 +77,8 @@ def test_simple_ocr():
     try:
         import pytesseract
         from PIL import Image, ImageDraw, ImageFont
+        
+        print("🧪 Testing basic OCR functionality...")
         
         # Create a simple test image with text
         img = Image.new('RGB', (400, 100), color='white')
@@ -70,6 +102,7 @@ def test_simple_ocr():
             return True
         else:
             print(f"⚠️  OCR extracted: '{text.strip()}' (should contain 'Hello World')")
+            print("   This might indicate OCR configuration issues")
             return False
             
     except Exception as e:
@@ -105,7 +138,10 @@ def test_pdf_conversion(pdf_path):
                 return True
             else:
                 print("❌ No text extracted from PDF image")
-                print("   This might be an image-only PDF or low quality scan")
+                print("   Possible causes:")
+                print("   - PDF contains only images/scanned content")
+                print("   - Poor image quality")
+                print("   - PDF is password protected")
                 return False
         else:
             print("❌ No images generated from PDF")
@@ -113,7 +149,27 @@ def test_pdf_conversion(pdf_path):
             
     except Exception as e:
         print(f"❌ PDF conversion failed: {e}")
+        print("   Common solutions:")
+        print("   - Install poppler: brew install poppler")
+        print("   - Check if PDF is corrupted")
         return False
+
+def install_instructions():
+    """Print installation instructions."""
+    print("📋 Installation Instructions")
+    print("=" * 50)
+    print("For macOS:")
+    print("  brew install tesseract poppler")
+    print("  pip3 install pytesseract pdf2image Pillow")
+    print()
+    print("For Ubuntu/Debian:")
+    print("  sudo apt-get install tesseract-ocr poppler-utils")
+    print("  pip3 install pytesseract pdf2image Pillow")
+    print()
+    print("For Windows:")
+    print("  1. Download Tesseract from: https://github.com/UB-Mannheim/tesseract/wiki")
+    print("  2. Download Poppler from: https://github.com/oschwartz10612/poppler-windows")
+    print("  3. pip install pytesseract pdf2image Pillow")
 
 def main():
     """Main test function."""
@@ -122,7 +178,9 @@ def main():
     
     # Test 1: Dependencies
     if not test_dependencies():
-        print("\n❌ Dependencies test failed. Install missing components and try again.")
+        print("\n❌ Dependencies test failed.")
+        print("\n")
+        install_instructions()
         return
     
     print("\n" + "=" * 50)
@@ -143,6 +201,7 @@ def main():
     
     print("\n" + "=" * 50)
     print("✅ Diagnostic complete!")
+    print("\nIf all tests pass, your OCR should work in the main application.")
 
 if __name__ == "__main__":
     main()
