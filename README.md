@@ -1,367 +1,332 @@
-# 🎓 Enhanced OCR Question Paper Parser
+# 🤖 Enhanced OCR Parser with Multimodal AI
 
-A comprehensive Python application that transforms PDF question papers into structured data with advanced image support, metadata extraction, and intelligent question parsing using Google's Gemini LLM.
+Transform PDF question papers into structured data using advanced multimodal AI capabilities including Llama Parse, Vision Models, and automatic cleanup features.
 
-## ✨ Key Features
+## 🌟 Key Features
 
-### 🚀 **Enhanced Processing Pipeline**
-- **Image Extraction**: Automatically extracts and stores images from PDF pages
-- **Advanced OCR**: Optimized text extraction with confidence scoring
-- **Smart LLM Parsing**: Uses Google Gemini with sophisticated prompts for accurate question parsing
-- **Metadata Detection**: Extracts paper metadata (subject, school, marks, time limit, instructions)
-- **Image Reference Matching**: Intelligently links question text to extracted images
+### 🚀 **Multimodal AI Processing**
+- **Llama Parse Integration** - Advanced document structure understanding
+- **Vision Model Analysis** - Intelligent image analysis using Gemini Vision & OpenAI Vision
+- **Smart Image Extraction** - Automatically extracts question-specific diagrams and figures
+- **Enhanced Metadata Extraction** - Comprehensive document information extraction
 
-### 📊 **Advanced Database Schema**
-- **Paper Metadata**: Complete paper information storage
-- **Enhanced Questions**: Comprehensive question structure with image support
-- **Image Management**: Full image metadata and storage tracking
-- **Legacy Compatibility**: Backward compatibility with existing data
+### 🔄 **Automatic Cleanup**
+- **Reprocessing Support** - Automatically truncates images folder and database entries when reprocessing the same file
+- **No Duplicate Data** - Ensures clean data storage without conflicts
+- **Version Control** - Maintains data integrity across multiple processing attempts
 
-### 🖼️ **Image Support**
-- **Automatic Extraction**: PDF pages converted to high-quality images
-- **Smart Storage**: Organized folder structure by source file
-- **Reference Matching**: Links image references in text to actual stored files
-- **Web Display**: Images rendered in UI with proper paths
+### 📊 **Advanced Question Processing**
+- **Multiple Question Types** - MCQ, Short Answer, Long Answer, etc.
+- **Image-Question Matching** - Links images to relevant questions using AI
+- **Comprehensive Metadata** - Subject, school, marks, time limits, instructions
+- **Structured Output** - Clean JSON format for easy integration
 
-### 🎯 **Question Types Supported**
-- Multiple Choice Questions (MCQ)
-- Short Answer Questions
-- Long Answer/Descriptive Questions
-- Fill-in-the-Blanks
-- True/False Questions
-- Diagram-based Questions
-- Passage-based Questions
-- Assertion-Reason Questions
-- Numerical Problems
-- Definition Questions
+### 🖼️ **Enhanced Image Processing**
+- **Full Page Extraction** - Complete page images for reference
+- **Diagram Detection** - Automatically identifies and extracts diagrams/figures
+- **Smart Reference Matching** - Maps "Figure 1.1" references to actual images
+- **Web-Accessible Storage** - Organized image storage with web links
 
-### 🌐 **Modern Web Interface**
-- **Multi-page Application**: Process, Browse, Statistics, Gallery, Settings
-- **Real-time Processing**: Progress bars and status updates
-- **Image Gallery**: View all extracted images with question context
-- **Advanced Statistics**: Comprehensive analytics with charts
-- **Responsive Design**: Modern UI with custom styling
+## 🛠️ Installation & Setup
 
-## 🏗️ **System Architecture**
-
-```
-📁 Enhanced OCR Application
-├── 🧠 app/
-│   ├── ocr_processor.py      # Enhanced OCR with image extraction
-│   ├── llm_parser.py         # Advanced Gemini LLM parsing
-│   ├── database_manager.py   # Enhanced database operations
-│   └── image_processor.py    # Image extraction and management
-├── ⚙️ config/
-│   └── settings.py           # Configuration management
-├── 💾 data/
-│   ├── questions.db          # Enhanced SQLite database
-│   └── images/               # Organized image storage
-│       └── [pdf_name]/       # Images per PDF file
-├── 🌐 main.py               # Enhanced Streamlit application
-└── 📚 requirements.txt       # Complete dependencies
-```
-
-## 🗄️ **Enhanced Database Schema**
-
-### Paper Metadata Table
-```sql
-paper_metadata (
-    id, source_file, subject, school_name, booklet_type,
-    total_marks, time_limit, general_instructions,
-    processed_at, updated_at
-)
-```
-
-### Enhanced Questions Table
-```sql
-questions_new (
-    id, paper_id, question_number, question_text,
-    options (JSON), marks, question_type,
-    image_references_in_text (JSON), image_links_used (JSON),
-    source_file, created_at, updated_at
-)
-```
-
-### Images Table
-```sql
-images (
-    id, original_filename, stored_filename, relative_path,
-    full_path, source_file, page_number, width, height,
-    file_size, created_at
-)
-```
-
-## 🚀 **Quick Start**
-
-### 1. **Environment Setup**
+### 1. Clone Repository
 ```bash
-# Clone the repository
 git clone <repository-url>
-cd psle_ocr_exam
+cd enhanced-ocr-parser
+```
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+### 2. Install Dependencies
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. **Configuration**
+### 3. Configure API Keys
+Copy the example environment file and add your API keys:
+
 ```bash
-# Copy environment template
 cp .env.example .env
+```
 
-# Edit .env file and add your Gemini API key
+Edit `.env` file with your API keys:
+
+```env
+# Required: At least one AI API key
 GEMINI_API_KEY=your_gemini_api_key_here
+LLAMA_CLOUD_API_KEY=your_llama_cloud_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-### 3. **System Dependencies**
+### 4. Run Application
 ```bash
-# macOS
-brew install tesseract poppler
-
-# Ubuntu/Debian
-sudo apt-get update
-sudo apt-get install tesseract-ocr poppler-utils
-
-# Check installation
-tesseract --version
+streamlit run main.py
 ```
 
-### 4. **Run Application**
-```bash
-# Start the enhanced application
-python3 -m streamlit run main.py
+## 🔑 API Key Setup
 
-# Or use the run script
-chmod +x run.sh
-./run.sh
+### 🎯 **Recommended Setup (Gemini + Llama Parse)**
+
+#### Google Gemini API (Recommended)
+1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Sign in with Google account
+3. Create API key
+4. Add to `.env`: `GEMINI_API_KEY=your_key_here`
+
+**Best for:** Question parsing, text analysis, image understanding
+
+#### Llama Parse API (Advanced Document Parsing)
+1. Go to [LlamaIndex Cloud](https://cloud.llamaindex.ai)
+2. Sign up for account
+3. Get API key from dashboard
+4. Add to `.env`: `LLAMA_CLOUD_API_KEY=your_key_here`
+
+**Best for:** Complex document structure parsing, educational content
+
+### 🔧 **Optional Enhancements**
+
+#### OpenAI API (Vision Analysis)
+1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Create account and add payment method
+3. Generate API key
+4. Add to `.env`: `OPENAI_API_KEY=your_key_here`
+
+**Best for:** Advanced image analysis, diagram understanding
+
+#### Anthropic API (Alternative LLM)
+1. Go to [Anthropic Console](https://console.anthropic.com)
+2. Create account
+3. Generate API key
+4. Add to `.env`: `ANTHROPIC_API_KEY=your_key_here`
+
+**Best for:** Alternative text analysis, backup processing
+
+## 🚀 Usage
+
+### Web Interface
+1. Run `streamlit run main.py`
+2. Upload PDF file
+3. Click "🚀 Process PDF"
+4. View results with images and metadata
+
+### Command Line Processing
+```python
+from app.llama_multimodal_parser import LlamaMultimodalParser
+
+# Initialize parser
+parser = LlamaMultimodalParser()
+
+# Process PDF
+parsed_data, image_info = parser.process_pdf_multimodal("path/to/file.pdf", "filename.pdf")
+
+# Access results
+print(f"Questions found: {len(parsed_data['questions'])}")
+print(f"Images extracted: {len(image_info)}")
 ```
 
-## 🎯 **Advanced Usage**
+## 📁 System Architecture
 
 ### **Processing Pipeline**
-1. **Upload PDF**: Select a clear, high-quality PDF question paper
-2. **Automatic Processing**: 
-   - Images extracted from all pages
-   - OCR performed with optimization
-   - Advanced LLM parsing with metadata extraction
-   - Smart image reference matching
-   - Comprehensive database storage
-3. **Review Results**: View parsed questions, metadata, and images
-4. **Browse & Analyze**: Use the multi-page interface for exploration
-
-### **Advanced Features**
-
-#### **Image Reference Matching**
-The system automatically matches text references like "Figure 1.1" or "Diagram A" to actual extracted images using:
-- Pattern recognition
-- Page number correlation
-- Fuzzy matching algorithms
-- Filename analysis
-
-#### **Metadata Extraction**
-Automatically detects and extracts:
-- **Subject**: Subject area (Physics, Math, English, etc.)
-- **School Name**: Institution name
-- **Booklet Type**: Set identifiers (Set A, Code 101, etc.)
-- **Total Marks**: Maximum marks for the paper
-- **Time Limit**: Duration allowed
-- **Instructions**: General instructions for the paper
-
-#### **Question Type Detection**
-Advanced classification of questions into specific types:
-- **MCQ**: Multiple choice with option detection
-- **Diagram-based**: Questions referencing images
-- **Passage-based**: Questions with reading passages
-- **Numerical**: Mathematical problem solving
-- **And more...**
-
-## 📊 **Database Access**
-
-### **Command Line Interface**
-```bash
-# View database information
-python read_database.py info
-
-# Show database schema
-python read_database.py schema
-
-# Export data
-python read_database.py export-json output.json
-python read_database.py export-csv output.csv
-
-# Search functionality
-python read_database.py search "physics"
+```
+📄 PDF Input
+    ↓
+🧹 Auto Cleanup (if reprocessing)
+    ↓
+📸 Image Extraction (Full pages + Diagrams)
+    ↓
+📄 Llama Parse (Document structure)
+    ↓
+👁️ Vision Analysis (Image understanding)
+    ↓
+🧠 Enhanced LLM Parsing (Question extraction)
+    ↓
+🔗 Smart Image Matching (Link images to questions)
+    ↓
+💾 Database Storage (Structured data)
 ```
 
-### **Programmatic Access**
-```python
-from app.database_manager import DatabaseManager
-
-# Initialize database manager
-db = DatabaseManager()
-
-# Get complete paper data
-paper_data = db.get_paper_by_file("sample.pdf")
-
-# Get all papers
-papers = db.get_all_papers()
-
-# Get statistics
-stats = db.get_statistics()
+### **File Organization**
 ```
-
-## 🔧 **Configuration Options**
-
-### **Environment Variables** (`.env`)
-```env
-# Required
-GEMINI_API_KEY=your_gemini_api_key
-
-# Optional customization
-DATABASE_PATH=./data/questions.db
-OCR_LANGUAGE=eng
-TESSERACT_PATH=/usr/local/bin/tesseract
-DEBUG=false
-```
-
-### **Advanced Settings** (`config/settings.py`)
-- OCR optimization parameters
-- Image processing settings
-- LLM parsing configuration
-- Database connection options
-
-## 🖼️ **Image Management**
-
-### **Storage Structure**
-```
-data/images/
-├── sample_paper/
-│   ├── sample_paper_page_1_20231201_143022.png
-│   ├── sample_paper_page_2_20231201_143023.png
+project/
+├── app/
+│   ├── llama_multimodal_parser.py  # Main multimodal parser
+│   ├── ocr_processor.py            # Processing coordination
+│   ├── image_processor.py          # Image extraction & analysis
+│   ├── simple_database_manager.py  # Database operations
 │   └── ...
-└── another_paper/
-    └── ...
+├── data/
+│   ├── images/                     # Extracted images
+│   │   └── [pdf_name]/
+│   │       ├── page_1.png         # Full page images
+│   │       └── diagram_1.png      # Extracted diagrams
+│   └── questions.db               # SQLite database
+├── config/
+│   └── settings.py                # Configuration management
+└── main.py                        # Streamlit web app
 ```
 
-### **Image Processing Features**
-- **High-Quality Extraction**: 300 DPI PNG format
-- **Automatic Optimization**: Web-optimized sizing
-- **Metadata Storage**: Dimensions, file size, source tracking
-- **Web Accessibility**: Proper paths for UI rendering
+## 📊 Database Schema
 
-## 📈 **Analytics & Statistics**
+### **Enhanced Tables**
+- `paper_metadata` - Document metadata (subject, school, marks, etc.)
+- `questions_new` - Questions with image references
+- `images` - Image storage information
+- `unmatched_images` - Images that couldn't be matched to questions
+- `processed_files` - Processing history and statistics
 
-The enhanced system provides comprehensive analytics:
+### **Auto-Cleanup Features**
+When reprocessing the same file:
+- ✅ Automatically removes previous image folder
+- ✅ Deletes previous database entries
+- ✅ Ensures clean, conflict-free data storage
 
-- **Processing Statistics**: Pages, images, questions counts
-- **Question Type Distribution**: Visual charts and breakdowns
-- **Subject Analysis**: Papers by subject area
-- **Image Usage**: Images per paper, reference matching rates
-- **Performance Metrics**: Processing times, confidence scores
+## 🎯 Output Format
 
-## � **Troubleshooting**
+### **Structured JSON Response**
+```json
+{
+  "metadata": {
+    "subject": "Mathematics",
+    "school_name": "ABC School",
+    "booklet_type": "Question Paper",
+    "total_marks": "100",
+    "time_limit": "3 hours",
+    "general_instructions": "..."
+  },
+  "questions": [
+    {
+      "question_number": "1",
+      "question_text": "Solve the following equation...",
+      "options": {
+        "A": "Option A",
+        "B": "Option B",
+        "C": "Option C",
+        "D": "Option D"
+      },
+      "marks": "5",
+      "question_type": "MCQ",
+      "image_references_in_text": ["Figure 1.1"],
+      "image_links_used": ["/data/images/sample/diagram_1.png"]
+    }
+  ],
+  "unmatched_image_links": []
+}
+```
+
+## 🔧 Configuration Options
+
+### **Environment Variables**
+```env
+# Multimodal Processing
+ENABLE_MULTIMODAL=True
+AUTO_CLEANUP_REPROCESS=True
+VISION_ANALYSIS_TIMEOUT=30
+PROCESSING_TIMEOUT=600
+
+# Model Settings
+GEMINI_MODEL=gemini-1.5-pro
+GEMINI_TEMPERATURE=0.1
+OPENAI_VISION_MODEL=gpt-4-vision-preview
+
+# File Processing
+MAX_FILE_SIZE_MB=100
+ALLOWED_EXTENSIONS=pdf
+```
+
+## 🛡️ Troubleshooting
 
 ### **Common Issues**
 
-#### **OCR Quality Issues**
-```bash
-# Check Tesseract installation
-tesseract --version
+#### No AI Models Configured
+```
+Error: At least one AI API key is required
+```
+**Solution:** Add at least one API key to `.env` file
 
-# Verify Poppler installation
-pdftoppm -h
+#### Database Column Errors
+```
+Error: table processed_files has no column named images_count
+```
+**Solution:** System automatically uses SimpleDatabaseManager with correct schema
 
-# Test with high-quality PDF
+#### Import Errors
+```
+Error: No module named 'llama_parse'
+```
+**Solution:** Install dependencies: `pip install -r requirements.txt`
+
+### **Fallback Behavior**
+The system includes robust fallback mechanisms:
+- If Llama Parse fails → Falls back to traditional OCR
+- If vision models fail → Uses basic image processing
+- If multimodal fails → Uses legacy processing pipeline
+- Missing dependencies → Graceful degradation with warnings
+
+## 📈 Performance Features
+
+### **Smart Processing**
+- **Parallel image analysis** for faster processing
+- **Intelligent caching** to avoid reprocessing
+- **Incremental updates** for efficiency
+- **Resource optimization** based on available models
+
+### **Scalability**
+- **Batch processing** support
+- **Concurrent file handling**
+- **Memory-efficient** image processing
+- **Database optimization** for large datasets
+
+## 🔄 Migration from Previous Versions
+
+### **Automatic Migration**
+The system automatically handles migration from previous versions:
+- Database schema updates applied automatically
+- Backward compatibility maintained
+- Existing data preserved during upgrades
+
+### **Manual Migration** (if needed)
+```python
+from app.migrate_database import migrate_database
+migrate_database()
 ```
 
-#### **Image Processing Issues**
-```bash
-# Check available disk space
-df -h
+## 🤝 Contributing
 
-# Verify image directory permissions
-ls -la data/images/
-```
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open Pull Request
 
-#### **LLM Parsing Issues**
-```bash
-# Verify API key
-python -c "from config.settings import settings; print(bool(settings.GEMINI_API_KEY))"
-
-# Check internet connectivity
-curl -I https://generativelanguage.googleapis.com
-```
-
-#### **Database Issues**
-```bash
-# Reset database (WARNING: Deletes all data)
-rm data/questions.db
-python -c "from app.database_manager import DatabaseManager; DatabaseManager()"
-```
-
-## 🤝 **Contributing**
-
-### **Development Setup**
-```bash
-# Install development dependencies
-pip install -r requirements.txt
-
-# Run tests
-pytest
-
-# Code formatting
-black .
-flake8 .
-```
-
-### **Code Structure**
-- **OCR Processing**: `app/ocr_processor.py`
-- **LLM Integration**: `app/llm_parser.py`
-- **Database Operations**: `app/database_manager.py`
-- **Image Management**: `app/image_processor.py`
-- **Web Interface**: `main.py`
-
-## 📋 **Changelog**
-
-### **v2.0.0 - Enhanced Edition**
-- ✨ Image extraction and storage system
-- 🧠 Advanced LLM parsing with sophisticated prompts
-- 📊 Enhanced database schema with metadata support
-- 🖼️ Smart image reference matching
-- 🌐 Multi-page web interface with image gallery
-- 📈 Comprehensive analytics and statistics
-- 🔧 Improved error handling and diagnostics
-
-### **v1.0.0 - Initial Release**
-- Basic OCR processing
-- Simple question extraction
-- Basic database storage
-- Simple web interface
-
-## 📄 **License**
+## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🙏 **Acknowledgments**
+## 🙏 Acknowledgments
 
-- **Google Generative AI**: For powerful LLM capabilities
-- **Tesseract OCR**: For robust text recognition
-- **Streamlit**: For the intuitive web framework
-- **pdf2image & Poppler**: For PDF processing
-- **OpenCV & Pillow**: For image processing
-
-## 📞 **Support**
-
-For issues, feature requests, or questions:
-
-1. **Check Documentation**: Review this README and code comments
-2. **Search Issues**: Look for existing GitHub issues
-3. **Create Issue**: Submit detailed bug reports or feature requests
-4. **Community**: Join discussions in the repository
+- **LlamaIndex** for advanced document parsing capabilities
+- **Google Gemini** for powerful multimodal AI
+- **OpenAI** for vision analysis capabilities
+- **Streamlit** for the beautiful web interface
 
 ---
 
-**🎯 Transform your question papers into structured, searchable data with advanced AI-powered parsing and comprehensive image support!**
+## 🚀 Quick Start Example
+
+```bash
+# 1. Setup
+git clone <repo>
+cd enhanced-ocr-parser
+pip install -r requirements.txt
+
+# 2. Configure (minimum)
+echo "GEMINI_API_KEY=your_key_here" > .env
+
+# 3. Run
+streamlit run main.py
+
+# 4. Upload PDF and process!
+```
+
+**Ready to transform your educational PDFs with AI! 🎓✨**

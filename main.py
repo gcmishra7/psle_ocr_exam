@@ -103,10 +103,51 @@ try:
             st.error(f"❌ Failed to initialize components: {e}")
             return None, None, None, False
 
+    def display_api_status():
+        """Display current API status for multimodal models."""
+        st.markdown("#### 🔌 AI Models Status")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # Check API key status
+        with col1:
+            if settings.GEMINI_API_KEY:
+                st.markdown('<div class="api-status api-active">✅ Gemini Vision</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="api-status api-inactive">❌ Gemini Vision</div>', unsafe_allow_html=True)
+        
+        with col2:
+            if settings.LLAMA_CLOUD_API_KEY:
+                st.markdown('<div class="api-status api-active">✅ Llama Parse</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="api-status api-inactive">❌ Llama Parse</div>', unsafe_allow_html=True)
+        
+        with col3:
+            if settings.OPENAI_API_KEY:
+                st.markdown('<div class="api-status api-active">✅ OpenAI Vision</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="api-status api-inactive">❌ OpenAI Vision</div>', unsafe_allow_html=True)
+        
+        with col4:
+            if settings.ANTHROPIC_API_KEY:
+                st.markdown('<div class="api-status api-active">✅ Claude</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="api-status api-inactive">❌ Claude</div>', unsafe_allow_html=True)
+        
+        # Show available models
+        available_models = settings.get_available_models()
+        if len(available_models) > 1 or (len(available_models) == 1 and "No AI models" not in available_models[0]):
+            st.success(f"🚀 **Active Models:** {', '.join(available_models)}")
+        else:
+            st.error("⚠️ **No AI models configured!** Please add API keys to .env file for full functionality.")
+
     def display_header():
-        """Display the main header."""
-        st.markdown('<div class="main-header">🎓 Enhanced OCR Question Paper Parser</div>', unsafe_allow_html=True)
-        st.markdown("### Transform PDF question papers into structured data with image support!")
+        """Display the main header with multimodal AI branding."""
+        st.markdown('<div class="main-header">🤖 Enhanced OCR Parser with Multimodal AI</div>', unsafe_allow_html=True)
+        st.markdown("### Transform PDF question papers using Llama Parse, Vision Models & Automatic Cleanup!")
+        
+        # Display API status
+        display_api_status()
 
     def display_sidebar():
         """Display the sidebar with navigation and stats."""
@@ -155,12 +196,13 @@ try:
         
         st.markdown("""
         <div class="info-box">
-        🚀 <strong>Enhanced Processing Features:</strong><br>
-        • Extract images from PDF pages<br>
-        • Advanced metadata detection (subject, school, marks, etc.)<br>
-        • Smart image reference matching<br>
-        • Multiple question types support<br>
-        • Comprehensive database storage
+        🚀 <strong>Multimodal AI Processing Features:</strong><br>
+        • <strong>Llama Parse</strong> - Advanced document structure understanding<br>
+        • <strong>Vision Models</strong> - Intelligent image analysis and OCR<br>
+        • <strong>Auto Cleanup</strong> - Automatically removes previous data when reprocessing<br>
+        • <strong>Smart Matching</strong> - Links images to questions with AI assistance<br>
+        • <strong>Enhanced Metadata</strong> - Extracts subject, school, marks, time limits<br>
+        • <strong>Question-Specific Images</strong> - Extracts diagrams and figures separately
         </div>
         """, unsafe_allow_html=True)
         

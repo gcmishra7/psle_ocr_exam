@@ -480,10 +480,10 @@ class OCRProcessor:
             'processing_time': 0
         }
     
-    # Legacy method for backward compatibility
     def process_pdf(self, pdf_path: str, source_filename: Optional[str] = None) -> bool:
         """
-        Legacy method that calls the comprehensive processing.
+        Main PDF processing method - uses multimodal approach with Llama Parse and vision models.
+        Includes automatic cleanup for reprocessing files.
         
         Args:
             pdf_path: Path to the PDF file
@@ -492,7 +492,93 @@ class OCRProcessor:
         Returns:
             True if successful, False otherwise
         """
-        return self.process_pdf_comprehensive(pdf_path, source_filename)
+        if source_filename is None:
+            source_filename = Path(pdf_path).name
+            
+        try:
+            print(f"\n🚀 STARTING MULTIMODAL PDF PROCESSING: {source_filename}")
+            print("=" * 80)
+            
+            # Try to use multimodal parser first
+            try:
+                from app.llama_multimodal_parser import LlamaMultimodalParser
+                multimodal_parser = LlamaMultimodalParser()
+                
+                print("🎯 Using Llama Parse + Vision Models for enhanced processing...")
+                parsed_data, image_info_list = multimodal_parser.process_pdf_multimodal(pdf_path, source_filename)
+                
+                if parsed_data and parsed_data.get('questions'):
+                    print(f"✅ Multimodal processing completed: {len(parsed_data['questions'])} questions")
+                    
+                    # Save to enhanced database
+                    success = self.db_manager.save_enhanced_paper_data(
+                        parsed_data, source_filename, None
+                    )
+                    
+                    if success:
+                        # Also save individual image info
+                        if hasattr(self.db_manager, 'save_image_info'):
+                            for image_info in image_info_list:
+                                self.db_manager.save_image_info(image_info)
+                        
+                        self._print_multimodal_summary(source_filename, parsed_data, image_info_list)
+                        return True
+                    else:
+                        print("❌ Failed to save to database")
+                        return False
+                else:
+                    print("⚠️  Multimodal processing yielded no results, falling back...")
+                    return self.process_pdf_comprehensive(pdf_path, source_filename)
+                    
+            except ImportError:
+                print("⚠️  Multimodal parser dependencies not available, using comprehensive processing...")
+                return self.process_pdf_comprehensive(pdf_path, source_filename)
+            except Exception as e:
+                print(f"⚠️  Multimodal processing failed ({e}), falling back to comprehensive...")
+                return self.process_pdf_comprehensive(pdf_path, source_filename)
+                
+        except Exception as e:
+            print(f"❌ Error in PDF processing: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _print_multimodal_summary(self, source_filename: str, parsed_data: Dict, image_info_list: List[Dict]):
+        """Print summary for multimodal processing results."""
+        print("\n" + "=" * 80)
+        print("🎉 MULTIMODAL PROCESSING COMPLETED SUCCESSFULLY!")
+        print("=" * 80)
+        
+        metadata = parsed_data.get('metadata', {})
+        questions = parsed_data.get('questions', [])
+        
+        print(f"📄 File: {source_filename}")
+        print(f"🧠 Method: Llama Parse + Vision Models")
+        print(f"📊 Questions: {len(questions)}")
+        print(f"📸 Images: {len(image_info_list)}")
+        
+        print("\n📋 EXTRACTED METADATA:")
+        for key, value in metadata.items():
+            if value and value != 'Unknown':
+                print(f"  • {key.replace('_', ' ').title()}: {value}")
+        
+        # Question type breakdown
+        question_types = {}
+        questions_with_images = 0
+        
+        for question in questions:
+            q_type = question.get('question_type', 'Unknown')
+            question_types[q_type] = question_types.get(q_type, 0) + 1
+            
+            if question.get('image_references_in_text') or question.get('image_links_used'):
+                questions_with_images += 1
+        
+        print(f"\n❓ QUESTIONS BREAKDOWN:")
+        for q_type, count in question_types.items():
+            print(f"  • {q_type}: {count}")
+        print(f"  • Questions with Images: {questions_with_images}")
+        
+        print("=" * 80)
     
     def create_basic_parsed_data(self, extracted_text: str, source_filename: str) -> Dict:
         """
