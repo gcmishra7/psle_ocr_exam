@@ -33,11 +33,32 @@ class OCRProcessor:
         self.db_manager = DatabaseManager()
         self.image_processor = ImageProcessor()
         
-        # OCR settings for educational content
-        self.ocr_config = {
-            'lang': 'eng',
-            'config': '--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz()[]{}.,?!:;-+*/=%@#$&_^|~`" \n\t'
-        }
+        # OCR settings for educational content with fallback configs
+        self.ocr_configs = [
+            {
+                'name': 'Standard Educational',
+                'lang': 'eng',
+                'config': '--oem 3 --psm 6'
+            },
+            {
+                'name': 'Single Column Text',
+                'lang': 'eng', 
+                'config': '--oem 3 --psm 4'
+            },
+            {
+                'name': 'Mixed Text and Images',
+                'lang': 'eng',
+                'config': '--oem 3 --psm 3'
+            },
+            {
+                'name': 'Sparse Text',
+                'lang': 'eng',
+                'config': '--oem 3 --psm 11'
+            }
+        ]
+        
+        # Default configuration
+        self.current_ocr_config = self.ocr_configs[0]
         
         self.dpi = 300
         self.processing_stats = {
@@ -181,12 +202,8 @@ class OCRProcessor:
                 # Enhance image for better OCR
                 enhanced_image = self.enhance_image_for_ocr(image)
                 
-                # Perform OCR
-                page_text = pytesseract.image_to_string(
-                    enhanced_image,
-                    lang=self.ocr_config['lang'],
-                    config=self.ocr_config['config']
-                )
+                # Perform OCR with robust error handling
+                page_text = self.extract_text_with_fallback(enhanced_image)
                 
                 if page_text.strip():
                     all_text.append(f"\n--- PAGE {page_num} ---\n")
@@ -201,6 +218,43 @@ class OCRProcessor:
         except Exception as e:
             print(f"❌ Error extracting text from PDF: {e}")
             logger.error(f"Text extraction error: {e}", exc_info=True)
+            return ""
+    
+    def extract_text_with_fallback(self, image: Image.Image) -> str:
+        """
+        Extract text from image with fallback OCR configurations.
+        
+        Args:
+            image: PIL Image object
+            
+        Returns:
+            Extracted text string
+        """
+        for config in self.ocr_configs:
+            try:
+                print(f"🔍 Trying OCR config: {config['name']}")
+                
+                text = pytesseract.image_to_string(
+                    image,
+                    lang=config['lang'],
+                    config=config['config']
+                )
+                
+                if text and text.strip():
+                    print(f"✅ OCR successful with {config['name']}")
+                    return text
+                    
+            except Exception as e:
+                print(f"⚠️  OCR config '{config['name']}' failed: {e}")
+                continue
+        
+        # If all configs fail, try basic OCR without config
+        try:
+            print("🔄 Trying basic OCR without specific config...")
+            text = pytesseract.image_to_string(image, lang='eng')
+            return text if text else ""
+        except Exception as e:
+            print(f"❌ All OCR attempts failed: {e}")
             return ""
     
     def enhance_image_for_ocr(self, image: Image.Image) -> Image.Image:
