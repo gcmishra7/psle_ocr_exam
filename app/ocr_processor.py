@@ -29,27 +29,36 @@ class OCRProcessor:
     
     def __init__(self):
         """Initialize OCR processor with all components."""
+        print("🔧 Initializing OCR processor with dependency handling...")
+        
+        # Always try SimpleDatabaseManager first to avoid dependency issues
+        try:
+            from app.simple_database_manager import SimpleDatabaseManager
+            self.db_manager = SimpleDatabaseManager()
+            print("✅ Using SimpleDatabaseManager (dependency-free)")
+        except Exception as e:
+            print(f"❌ SimpleDatabaseManager failed: {e}")
+            try:
+                self.db_manager = DatabaseManager()
+                print("✅ Using full DatabaseManager")
+            except Exception as e2:
+                print(f"❌ Both database managers failed: {e2}")
+                raise
+        
+        # Try to initialize other components with fallbacks
         try:
             self.llm_parser = LLMParser()
-            self.db_manager = DatabaseManager()
-            self.image_processor = ImageProcessor()
-            print("✅ Using full database manager")
+            print("✅ LLM parser initialized")
         except Exception as e:
-            print(f"⚠️  Full components failed ({e}), using simplified versions...")
-            try:
-                # Use simplified components that don't require external dependencies
-                from app.simple_database_manager import SimpleDatabaseManager
-                self.db_manager = SimpleDatabaseManager()
-                print("✅ Using simplified database manager")
-                
-                # For LLM and image processor, we'll need similar fallbacks
-                # For now, set them to None and handle gracefully
-                self.llm_parser = None
-                self.image_processor = None
-                print("⚠️  LLM and image processing disabled due to missing dependencies")
-            except Exception as e2:
-                print(f"❌ Even simplified components failed: {e2}")
-                raise
+            print(f"⚠️  LLM parser failed ({e}), will use fallback parsing")
+            self.llm_parser = None
+        
+        try:
+            self.image_processor = ImageProcessor()
+            print("✅ Image processor initialized")
+        except Exception as e:
+            print(f"⚠️  Image processor failed ({e}), will use basic image handling")
+            self.image_processor = None
         
         # OCR settings for educational content with fallback configs
         self.ocr_configs = [

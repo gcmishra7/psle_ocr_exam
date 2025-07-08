@@ -3,11 +3,19 @@ import shutil
 import hashlib
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from PIL import Image
+from PIL import Image, ImageDraw
 import tempfile
 from pdf2image import convert_from_path
 from datetime import datetime
 from config.settings import settings
+
+# Try to import numpy, fall back to basic operations if not available
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
+    print("⚠️  NumPy not available, using basic image processing")
 
 class ImageProcessor:
     """Handles extraction, storage, and management of images from PDF files."""
@@ -19,7 +27,8 @@ class ImageProcessor:
     
     def extract_images_from_pdf(self, pdf_path: str, source_filename: str) -> Tuple[List[Dict], List[str]]:
         """
-        Extract all images from a PDF file and save them to the images directory.
+        Extract images from a PDF file with enhanced processing for educational content.
+        Extracts both full pages and attempts to identify specific diagram regions.
         
         Args:
             pdf_path: Path to the PDF file
@@ -43,41 +52,19 @@ class ImageProcessor:
             pdf_images_dir.mkdir(exist_ok=True)
             
             for page_num, image in enumerate(images, 1):
-                # Generate filename
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                image_filename = f"{pdf_name}_page_{page_num}_{timestamp}.png"
+                print(f"📄 Processing page {page_num}...")
                 
-                # Save image
-                image_path = pdf_images_dir / image_filename
-                image.save(image_path, "PNG", optimize=True)
+                # Extract full page image (for reference)
+                page_info = self._save_full_page_image(image, pdf_name, page_num, pdf_images_dir, source_filename)
+                if page_info:
+                    image_info_list.append(page_info)
+                    image_links_list.append(f"/images/{pdf_name}/{page_info['stored_filename']}")
                 
-                # Get image properties
-                width, height = image.size
-                file_size = image_path.stat().st_size
-                
-                # Create relative path for web access
-                relative_path = f"images/{pdf_name}/{image_filename}"
-                
-                # Create image info
-                image_info = {
-                    'original_filename': f"page_{page_num}.png",
-                    'stored_filename': image_filename,
-                    'relative_path': relative_path,
-                    'full_path': str(image_path),
-                    'source_file': source_filename,
-                    'page_number': page_num,
-                    'width': width,
-                    'height': height,
-                    'file_size': file_size
-                }
-                
-                image_info_list.append(image_info)
-                
-                # Create web-accessible URL/path
-                image_link = f"/images/{pdf_name}/{image_filename}"
-                image_links_list.append(image_link)
-                
-                print(f"✅ Saved image: page {page_num} -> {relative_path}")
+                # Try to extract specific diagram/figure regions
+                diagram_infos = self._extract_diagram_regions(image, pdf_name, page_num, pdf_images_dir, source_filename)
+                for diagram_info in diagram_infos:
+                    image_info_list.append(diagram_info)
+                    image_links_list.append(f"/images/{pdf_name}/{diagram_info['stored_filename']}")
             
             print(f"📸 Extracted {len(image_info_list)} images from {source_filename}")
             return image_info_list, image_links_list
@@ -85,6 +72,233 @@ class ImageProcessor:
         except Exception as e:
             print(f"❌ Error extracting images from PDF: {e}")
             return [], []
+    
+    def _save_full_page_image(self, image: Image.Image, pdf_name: str, page_num: int, 
+                             pdf_images_dir: Path, source_filename: str) -> Optional[Dict]:
+        """Save a full page image."""
+        try:
+            # Generate filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            image_filename = f"{pdf_name}_page_{page_num}_{timestamp}.png"
+            
+            # Save image
+            image_path = pdf_images_dir / image_filename
+            image.save(image_path, "PNG", optimize=True)
+            
+            # Get image properties
+            width, height = image.size
+            file_size = image_path.stat().st_size
+            
+            # Create relative path for web access
+            relative_path = f"images/{pdf_name}/{image_filename}"
+            
+            # Create image info
+            image_info = {
+                'original_filename': f"page_{page_num}.png",
+                'stored_filename': image_filename,
+                'relative_path': relative_path,
+                'full_path': str(image_path),
+                'source_file': source_filename,
+                'page_number': page_num,
+                'width': width,
+                'height': height,
+                'file_size': file_size,
+                'image_type': 'full_page'
+            }
+            
+            print(f"✅ Saved full page: page {page_num} -> {relative_path}")
+            return image_info
+            
+        except Exception as e:
+            print(f"❌ Error saving full page image: {e}")
+            return None
+    
+    def _extract_diagram_regions(self, image: Image.Image, pdf_name: str, page_num: int, 
+                                pdf_images_dir: Path, source_filename: str) -> List[Dict]:
+        """
+        Extract specific diagram/figure regions from a page.
+        Uses simple image processing to identify potential diagram areas.
+        """
+        try:
+            print(f"🔍 Looking for diagrams on page {page_num}...")
+            
+            if not HAS_NUMPY:
+                print(f"⚠️  Skipping diagram extraction (NumPy not available)")
+                return []
+            
+            # Convert to grayscale for analysis
+            gray_image = image.convert('L')
+            img_array = np.array(gray_image)
+            
+            # Simple approach: detect regions with high contrast or enclosed areas
+            # This is a basic implementation - could be enhanced with ML models
+            diagram_regions = self._find_diagram_regions(img_array)
+            
+            diagram_infos = []
+            for i, region in enumerate(diagram_regions):
+                x, y, w, h = region
+                
+                # Extract the region
+                cropped = image.crop((x, y, x + w, y + h))
+                
+                # Only save if region is significant (not too small)
+                if w > 100 and h > 100:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    diagram_filename = f"{pdf_name}_page_{page_num}_diagram_{i+1}_{timestamp}.png"
+                    
+                    # Save diagram
+                    diagram_path = pdf_images_dir / diagram_filename
+                    cropped.save(diagram_path, "PNG", optimize=True)
+                    
+                    # Create image info
+                    relative_path = f"images/{pdf_name}/{diagram_filename}"
+                    diagram_info = {
+                        'original_filename': f"page_{page_num}_diagram_{i+1}.png",
+                        'stored_filename': diagram_filename,
+                        'relative_path': relative_path,
+                        'full_path': str(diagram_path),
+                        'source_file': source_filename,
+                        'page_number': page_num,
+                        'width': w,
+                        'height': h,
+                        'file_size': diagram_path.stat().st_size,
+                        'image_type': 'diagram',
+                        'region_coords': {'x': x, 'y': y, 'width': w, 'height': h}
+                    }
+                    
+                    diagram_infos.append(diagram_info)
+                    print(f"✅ Extracted diagram: page {page_num} diagram {i+1} -> {relative_path}")
+            
+            return diagram_infos
+            
+        except Exception as e:
+            print(f"❌ Error extracting diagrams from page {page_num}: {e}")
+            return []
+    
+    def _find_diagram_regions(self, img_array) -> List[Tuple[int, int, int, int]]:
+        """
+        Find potential diagram regions in an image using simple image processing.
+        Returns list of (x, y, width, height) tuples.
+        """
+        try:
+            if not HAS_NUMPY:
+                return []
+                
+            # Simple approach: look for rectangular regions with high contrast
+            # This is a basic implementation - could be enhanced significantly
+            
+            # Apply edge detection (simple gradient)
+            height, width = img_array.shape
+            regions = []
+            
+            # Look for potential diagram areas by analyzing image statistics
+            # Divide image into grid and analyze each section
+            grid_size = 50
+            
+            for y in range(0, height - grid_size, grid_size):
+                for x in range(0, width - grid_size, grid_size):
+                    # Extract region
+                    region = img_array[y:y+grid_size, x:x+grid_size]
+                    
+                    # Calculate statistics
+                    mean_val = np.mean(region)
+                    std_val = np.std(region)
+                    
+                    # Look for regions with high variance (potential diagrams/figures)
+                    if std_val > 40 and mean_val < 200:  # High contrast, not pure white
+                        # Try to expand the region to capture full diagram
+                        expanded_region = self._expand_region(img_array, x, y, grid_size, grid_size)
+                        if expanded_region:
+                            regions.append(expanded_region)
+            
+            # Remove overlapping regions and merge adjacent ones
+            regions = self._merge_overlapping_regions(regions)
+            
+            return regions
+            
+        except Exception as e:
+            print(f"❌ Error finding diagram regions: {e}")
+            return []
+    
+    def _expand_region(self, img_array, start_x: int, start_y: int, 
+                      initial_w: int, initial_h: int) -> Optional[Tuple[int, int, int, int]]:
+        """Expand a region to capture the full diagram."""
+        try:
+            if not HAS_NUMPY:
+                return None
+                
+            height, width = img_array.shape
+            
+            # Start with initial region
+            x, y, w, h = start_x, start_y, initial_w, initial_h
+            
+            # Try to expand in all directions
+            # This is a simple implementation - could be much more sophisticated
+            
+            # Expand right
+            while x + w < width - 10:
+                test_region = img_array[y:y+h, x+w:x+w+10]
+                if HAS_NUMPY and np.std(test_region) > 20:  # Still has content
+                    w += 10
+                else:
+                    break
+            
+            # Expand down
+            while y + h < height - 10:
+                test_region = img_array[y+h:y+h+10, x:x+w]
+                if HAS_NUMPY and np.std(test_region) > 20:  # Still has content
+                    h += 10
+                else:
+                    break
+            
+            # Only return if region is significant
+            if w > 150 and h > 150:
+                return (x, y, w, h)
+            
+            return None
+            
+        except Exception as e:
+            return None
+    
+    def _merge_overlapping_regions(self, regions: List[Tuple[int, int, int, int]]) -> List[Tuple[int, int, int, int]]:
+        """Merge overlapping regions to avoid duplicates."""
+        if not regions:
+            return []
+        
+        merged = []
+        regions = sorted(regions, key=lambda r: r[0] * 10000 + r[1])  # Sort by position
+        
+        for region in regions:
+            x, y, w, h = region
+            
+            # Check if this region overlaps significantly with any existing merged region
+            overlaps = False
+            for i, existing in enumerate(merged):
+                ex, ey, ew, eh = existing
+                
+                # Calculate overlap
+                overlap_x = max(0, min(x + w, ex + ew) - max(x, ex))
+                overlap_y = max(0, min(y + h, ey + eh) - max(y, ey))
+                overlap_area = overlap_x * overlap_y
+                
+                region_area = w * h
+                existing_area = ew * eh
+                
+                # If significant overlap, merge
+                if overlap_area > 0.3 * min(region_area, existing_area):
+                    # Merge regions
+                    new_x = min(x, ex)
+                    new_y = min(y, ey)
+                    new_w = max(x + w, ex + ew) - new_x
+                    new_h = max(y + h, ey + eh) - new_y
+                    merged[i] = (new_x, new_y, new_w, new_h)
+                    overlaps = True
+                    break
+            
+            if not overlaps:
+                merged.append(region)
+        
+        return merged
     
     def create_image_links_array(self, image_info_list: List[Dict]) -> List[str]:
         """
@@ -102,15 +316,29 @@ class ImageProcessor:
             # Create descriptive filename that LLM can understand
             relative_path = image_info['relative_path']
             page_num = image_info['page_number']
+            image_type = image_info.get('image_type', 'full_page')
             
             # Create multiple variations for better matching
-            variations = [
-                f"/data/{relative_path}",
-                f"page_{page_num}.png",
-                f"Page {page_num}",
-                f"page{page_num}",
-                relative_path
-            ]
+            if image_type == 'diagram':
+                # For diagrams, create more specific references
+                diagram_num = image_info['stored_filename'].split('_diagram_')[1].split('_')[0]
+                variations = [
+                    f"/data/{relative_path}",
+                    f"page_{page_num}_diagram_{diagram_num}.png",
+                    f"Page {page_num} Diagram {diagram_num}",
+                    f"Figure {diagram_num} (Page {page_num})",
+                    f"diagram_{diagram_num}",
+                    relative_path
+                ]
+            else:
+                # For full pages
+                variations = [
+                    f"/data/{relative_path}",
+                    f"page_{page_num}.png",
+                    f"Page {page_num}",
+                    f"page{page_num}",
+                    relative_path
+                ]
             
             image_links.extend(variations)
         
