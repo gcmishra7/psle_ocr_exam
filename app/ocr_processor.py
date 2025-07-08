@@ -1,10 +1,15 @@
 import pytesseract
-from pdf2image import convert_from_path
+from pdf2image import convert_from_path, pdfinfo_from_path
 from PIL import Image, ImageEnhance, ImageFilter
 import os
 import tempfile
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from config.settings import settings
+import logging
+from pathlib import Path
+from app.llm_parser import LLMParser
+from app.database_manager import DatabaseManager
+from app.image_processor import ImageProcessor
 
 # Try to import OpenCV, but make it optional
 try:
@@ -15,359 +20,419 @@ except ImportError:
     OPENCV_AVAILABLE = False
     print("⚠️  OpenCV not available, using basic image processing")
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class OCRProcessor:
-    """Handles OCR processing of PDF files and images, optimized for educational content."""
+    """Enhanced OCR processor with image extraction and advanced question paper parsing."""
     
     def __init__(self):
-        """Initialize OCR processor with configuration."""
-        self.setup_tesseract()
-        self.language = settings.OCR_LANGUAGE
-        self.test_dependencies()
-    
-    def setup_tesseract(self):
-        """Setup Tesseract OCR with proper path detection."""
-        # Try different common Tesseract paths
-        possible_paths = [
-            settings.TESSERACT_PATH,
-            '/usr/bin/tesseract',
-            '/usr/local/bin/tesseract',
-            '/opt/homebrew/bin/tesseract',
-            'tesseract',  # Assume it's in PATH
-        ]
+        """Initialize OCR processor with all components."""
+        self.llm_parser = LLMParser()
+        self.db_manager = DatabaseManager()
+        self.image_processor = ImageProcessor()
         
-        for path in possible_paths:
-            if path and self.test_tesseract_path(path):
-                pytesseract.pytesseract.tesseract_cmd = path
-                print(f"✅ Tesseract found at: {path}")
-                return
+        # OCR settings for educational content
+        self.ocr_config = {
+            'lang': 'eng',
+            'config': '--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz()[]{}.,?!:;-+*/=%@#$&_^|~`" \n\t'
+        }
         
-        print("❌ Tesseract OCR not found. Please install it:")
-        print("   macOS: brew install tesseract")
-        print("   Ubuntu: sudo apt-get install tesseract-ocr")
+        self.dpi = 300
+        self.processing_stats = {
+            'pages_processed': 0,
+            'images_extracted': 0,
+            'questions_found': 0,
+            'processing_time': 0
+        }
     
-    def test_tesseract_path(self, path: str) -> bool:
-        """Test if Tesseract is available at the given path."""
+    def process_pdf_comprehensive(self, pdf_path: str, source_filename: Optional[str] = None) -> bool:
+        """
+        Comprehensive PDF processing with image extraction and enhanced parsing.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            source_filename: Original filename for organization
+            
+        Returns:
+            True if processing successful, False otherwise
+        """
+        import time
+        start_time = time.time()
+        
         try:
-            import subprocess
-            result = subprocess.run([path, '--version'], 
-                                  capture_output=True, 
-                                  text=True, 
-                                  timeout=5)
-            return result.returncode == 0
-        except:
+            if source_filename is None:
+                source_filename = Path(pdf_path).name
+            
+            print(f"\n🚀 Starting comprehensive processing of: {source_filename}")
+            print("=" * 80)
+            
+            # Step 1: Extract images from PDF
+            print("📸 STEP 1: Extracting images from PDF...")
+            image_info_list, image_links_list = self.image_processor.extract_images_from_pdf(
+                pdf_path, source_filename
+            )
+            
+            self.processing_stats['images_extracted'] = len(image_info_list)
+            
+            # Save image information to database
+            for image_info in image_info_list:
+                self.db_manager.save_image_info(image_info)
+            
+            # Step 2: Perform OCR on the PDF
+            print("\n🔍 STEP 2: Performing OCR extraction...")
+            extracted_text = self.extract_text_from_pdf(pdf_path)
+            
+            if not extracted_text or len(extracted_text.strip()) < 50:
+                print("❌ Insufficient text extracted from PDF")
+                return False
+            
+            print(f"✅ Extracted {len(extracted_text)} characters of text")
+            
+            # Step 3: Create image links for LLM processing
+            print("\n🔗 STEP 3: Preparing image links for LLM...")
+            formatted_image_links = self.image_processor.create_image_links_array(image_info_list)
+            
+            print(f"📋 Created {len(formatted_image_links)} image link variations")
+            
+            # Step 4: Parse with enhanced LLM
+            print("\n🧠 STEP 4: Enhanced LLM parsing with image support...")
+            parsed_data = self.llm_parser.parse_questions_enhanced(
+                extracted_text, 
+                formatted_image_links
+            )
+            
+            if not parsed_data:
+                print("⚠️  Enhanced parsing failed, trying fallback...")
+                parsed_data = self.llm_parser.fallback_parse_questions(extracted_text)
+            
+            if not parsed_data:
+                print("❌ All parsing methods failed")
+                return False
+            
+            # Step 5: Enhance image matching
+            print("\n🔍 STEP 5: Enhancing image reference matching...")
+            parsed_data = self.llm_parser.enhance_image_matching(parsed_data, image_info_list)
+            
+            # Step 6: Create image mappings for database storage
+            print("\n💾 STEP 6: Creating image mappings...")
+            image_mappings = self.create_image_mappings(parsed_data, image_info_list)
+            
+            # Step 7: Save to database
+            print("\n💾 STEP 7: Saving to enhanced database...")
+            success = self.db_manager.save_enhanced_paper_data(
+                parsed_data, 
+                source_filename, 
+                image_mappings
+            )
+            
+            if not success:
+                print("❌ Failed to save to database")
+                return False
+            
+            # Update processing stats
+            self.processing_stats['questions_found'] = len(parsed_data.get('questions', []))
+            self.processing_stats['processing_time'] = int(time.time() - start_time)
+            
+            # Print summary
+            self.print_processing_summary(source_filename, parsed_data)
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error in comprehensive PDF processing: {e}")
+            logger.error(f"Comprehensive processing error: {e}", exc_info=True)
             return False
     
-    def test_dependencies(self):
-        """Test all dependencies and print diagnostic information."""
-        print("🔧 Testing OCR dependencies...")
-        
-        # Test Tesseract
-        try:
-            version = pytesseract.get_tesseract_version()
-            print(f"✅ Tesseract {version} is working")
-        except Exception as e:
-            print(f"❌ Tesseract error: {e}")
-        
-        # Test pdf2image
-        try:
-            print("✅ pdf2image is available")
-        except Exception as e:
-            print(f"❌ pdf2image error: {e}")
-            print("   Install poppler: brew install poppler (macOS)")
-        
-        # Test OpenCV
-        if OPENCV_AVAILABLE:
-            print("✅ OpenCV is available for advanced image processing")
-        else:
-            print("⚠️  OpenCV not available (will use basic preprocessing)")
-    
-    def preprocess_educational_image(self, image: Image.Image) -> Image.Image:
+    def extract_text_from_pdf(self, pdf_path: str) -> str:
         """
-        Advanced preprocessing optimized for educational content and diagrams.
-        
-        Args:
-            image: PIL Image object
-            
-        Returns:
-            Preprocessed PIL Image object optimized for educational OCR
-        """
-        try:
-            if OPENCV_AVAILABLE:
-                return self._opencv_educational_preprocessing(image)
-            else:
-                return self._basic_educational_preprocessing(image)
-        except Exception as e:
-            print(f"⚠️  Advanced preprocessing failed: {e}, using basic processing")
-            return self._basic_educational_preprocessing(image)
-    
-    def _opencv_educational_preprocessing(self, image: Image.Image) -> Image.Image:
-        """Advanced OpenCV preprocessing for educational content."""
-        # Convert PIL to OpenCV
-        opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        
-        # Convert to grayscale
-        gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-        
-        # Enhance contrast for better text recognition
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        enhanced = clahe.apply(gray)
-        
-        # Noise reduction while preserving text edges
-        denoised = cv2.bilateralFilter(enhanced, 9, 75, 75)
-        
-        # Adaptive thresholding optimized for educational content
-        thresh = cv2.adaptiveThreshold(
-            denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-        )
-        
-        # Morphological operations to connect text components
-        kernel = np.ones((1,1), np.uint8)
-        processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-        
-        # Convert back to PIL
-        return Image.fromarray(processed)
-    
-    def _basic_educational_preprocessing(self, image: Image.Image) -> Image.Image:
-        """Basic PIL preprocessing for educational content."""
-        # Convert to grayscale
-        gray_image = image.convert('L')
-        
-        # Enhance contrast
-        enhancer = ImageEnhance.Contrast(gray_image)
-        contrast_enhanced = enhancer.enhance(1.5)
-        
-        # Enhance sharpness for better text recognition
-        sharpness_enhancer = ImageEnhance.Sharpness(contrast_enhanced)
-        sharp_image = sharpness_enhancer.enhance(2.0)
-        
-        # Apply a slight blur to reduce noise
-        smooth_image = sharp_image.filter(ImageFilter.SMOOTH_MORE)
-        
-        return smooth_image
-    
-    def extract_text_with_layout(self, image: Image.Image) -> Dict:
-        """
-        Extract text with layout information for better MCQ parsing.
-        
-        Args:
-            image: PIL Image object
-            
-        Returns:
-            Dictionary with text and layout information
-        """
-        try:
-            # Preprocess image for educational content
-            processed_image = self.preprocess_educational_image(image)
-            
-            # Try multiple OCR configurations optimized for educational content
-            configs = [
-                # Standard configuration for educational content
-                r'--oem 3 --psm 6 -l ' + self.language,
-                # Better for single column text (like questions)
-                r'--oem 3 --psm 4 -l ' + self.language,  
-                # For mixed text and images
-                r'--oem 3 --psm 3 -l ' + self.language,
-                # For single text blocks
-                r'--oem 3 --psm 8 -l ' + self.language,
-                # For sparse text (good for MCQ options)
-                r'--oem 3 --psm 11 -l ' + self.language,
-            ]
-            
-            best_result = {"text": "", "confidence": 0}
-            
-            for config in configs:
-                try:
-                    # Get text with confidence scores
-                    data = pytesseract.image_to_data(processed_image, config=config, output_type=pytesseract.Output.DICT)
-                    
-                    # Calculate average confidence
-                    confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
-                    avg_confidence = sum(confidences) / len(confidences) if confidences else 0
-                    
-                    # Get text
-                    text = pytesseract.image_to_string(processed_image, config=config)
-                    
-                    if avg_confidence > best_result["confidence"] and text.strip():
-                        best_result = {
-                            "text": text.strip(),
-                            "confidence": avg_confidence,
-                            "config": config,
-                            "layout_data": data
-                        }
-                        
-                except Exception as e:
-                    print(f"⚠️  OCR config failed: {config}, error: {e}")
-                    continue
-            
-            # Fallback: try without custom config
-            if not best_result["text"]:
-                try:
-                    text = pytesseract.image_to_string(processed_image)
-                    best_result["text"] = text.strip()
-                    best_result["confidence"] = 50  # Default confidence
-                except Exception as e:
-                    print(f"❌ Fallback OCR failed: {e}")
-            
-            return best_result
-            
-        except Exception as e:
-            print(f"❌ Error extracting text with layout: {str(e)}")
-            return {"text": "", "confidence": 0}
-    
-    def extract_text_from_image(self, image: Image.Image) -> str:
-        """
-        Extract text from a single image using OCR optimized for educational content.
-        
-        Args:
-            image: PIL Image object
-            
-        Returns:
-            Extracted text as string
-        """
-        result = self.extract_text_with_layout(image)
-        return result.get("text", "")
-    
-    def pdf_to_text(self, pdf_path: str) -> str:
-        """
-        Convert PDF file to text using OCR optimized for educational content.
+        Extract text from PDF with optimized settings for question papers.
         
         Args:
             pdf_path: Path to the PDF file
             
         Returns:
-            Extracted text from all pages with enhanced MCQ structure
+            Extracted text content
         """
         try:
-            print(f"📄 Converting PDF to images for educational content processing...")
+            print(f"📖 Converting PDF to images for OCR...")
             
-            # Try different DPI settings optimized for educational content
-            dpi_settings = [300, 200, 150]  # Start with higher DPI for better diagram quality
-            images = None
+            # Get PDF info
+            pdf_info = pdfinfo_from_path(pdf_path)
+            total_pages = pdf_info['Pages']
+            self.processing_stats['pages_processed'] = total_pages
             
-            for dpi in dpi_settings:
-                try:
-                    images = convert_from_path(pdf_path, dpi=dpi)
-                    print(f"✅ PDF converted to {len(images)} images at {dpi} DPI")
-                    break
-                except Exception as e:
-                    print(f"❌ DPI {dpi} failed: {e}")
-                    continue
+            print(f"📄 Processing {total_pages} pages at {self.dpi} DPI...")
             
-            if not images:
-                print("❌ Failed to convert PDF to images")
-                return ""
+            # Convert PDF to images
+            images = convert_from_path(
+                pdf_path, 
+                dpi=self.dpi,
+                fmt='PNG',
+                thread_count=2
+            )
             
-            extracted_pages = []
+            all_text = []
             
-            for i, image in enumerate(images):
-                print(f"🔍 Processing page {i + 1} of {len(images)} (Educational Content)...")
+            for page_num, image in enumerate(images, 1):
+                print(f"🔍 Processing page {page_num}/{total_pages}...")
                 
-                # Extract text with layout information
-                result = self.extract_text_with_layout(image)
-                page_text = result.get("text", "")
-                confidence = result.get("confidence", 0)
+                # Enhance image for better OCR
+                enhanced_image = self.enhance_image_for_ocr(image)
                 
-                if page_text:
-                    page_header = f"--- Page {i + 1} (Confidence: {confidence:.1f}%) ---"
-                    extracted_pages.append(f"{page_header}\n{page_text}\n")
-                    print(f"✅ Page {i + 1}: Found {len(page_text)} characters (Confidence: {confidence:.1f}%)")
-                else:
-                    print(f"⚠️  Page {i + 1}: No text found")
+                # Perform OCR
+                page_text = pytesseract.image_to_string(
+                    enhanced_image,
+                    lang=self.ocr_config['lang'],
+                    config=self.ocr_config['config']
+                )
+                
+                if page_text.strip():
+                    all_text.append(f"\n--- PAGE {page_num} ---\n")
+                    all_text.append(page_text)
+                    all_text.append(f"\n--- END PAGE {page_num} ---\n")
             
-            result_text = "\n".join(extracted_pages)
-            print(f"📝 Total extracted text: {len(result_text)} characters")
+            combined_text = '\n'.join(all_text)
+            print(f"✅ OCR completed. Extracted {len(combined_text)} characters total")
             
-            # Post-process for better MCQ structure
-            enhanced_text = self.enhance_mcq_structure(result_text)
-            
-            return enhanced_text
+            return combined_text
             
         except Exception as e:
-            print(f"❌ Error processing PDF: {str(e)}")
-            print("🔧 Troubleshooting tips for educational content:")
-            print("   1. Ensure PDF is high quality (300+ DPI recommended)")
-            print("   2. Check if PDF contains selectable text vs. scanned images")
-            print("   3. For best results with diagrams, use clear, high-contrast images")
-            print("   4. Make sure Tesseract and Poppler are properly installed")
+            print(f"❌ Error extracting text from PDF: {e}")
+            logger.error(f"Text extraction error: {e}", exc_info=True)
             return ""
     
-    def enhance_mcq_structure(self, text: str) -> str:
+    def enhance_image_for_ocr(self, image: Image.Image) -> Image.Image:
         """
-        Post-process text to better structure MCQ questions.
+        Enhance image quality for better OCR results on educational content.
         
         Args:
-            text: Raw OCR text
+            image: PIL Image object
             
         Returns:
-            Enhanced text with better MCQ structure
-        """
-        import re
-        
-        # Patterns for MCQ options
-        option_patterns = [
-            r'^\s*\([1-4A-Da-d]\)\s*',  # (1), (2), (A), (B)
-            r'^\s*[1-4A-Da-d][\.\)]\s*',  # 1., 2., A., B.
-            r'^\s*\([1-4A-Da-d]\s*\)\s*',  # ( 1 ), ( A )
-        ]
-        
-        lines = text.split('\n')
-        enhanced_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                enhanced_lines.append('')
-                continue
-            
-            # Check if line is an MCQ option
-            is_option = False
-            for pattern in option_patterns:
-                if re.match(pattern, line):
-                    # Ensure proper spacing for options
-                    line = f"    {line}"  # Indent options
-                    is_option = True
-                    break
-            
-            # Check for question numbers
-            if re.match(r'^\s*\d+\.\s*', line) and not is_option:
-                # Add extra spacing before questions
-                if enhanced_lines and enhanced_lines[-1].strip():
-                    enhanced_lines.append('')
-                enhanced_lines.append(f"QUESTION {line}")
-            else:
-                enhanced_lines.append(line)
-        
-        return '\n'.join(enhanced_lines)
-    
-    def extract_from_uploaded_file(self, uploaded_file) -> str:
-        """
-        Extract text from uploaded file optimized for educational content.
-        
-        Args:
-            uploaded_file: Streamlit uploaded file object
-            
-        Returns:
-            Extracted text optimized for MCQ parsing
+            Enhanced PIL Image
         """
         try:
-            print(f"📁 Processing educational content: {uploaded_file.name}")
-            print(f"📊 File size: {uploaded_file.size / 1024:.1f} KB")
+            # Convert to RGB if necessary
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
             
-            # Save uploaded file temporarily
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                tmp_path = tmp_file.name
-                print(f"💾 Saved to temporary file: {tmp_path}")
+            # Resize if too small
+            width, height = image.size
+            if width < 1000:
+                ratio = 1000 / width
+                new_height = int(height * ratio)
+                image = image.resize((1000, new_height), Image.Resampling.LANCZOS)
             
-            # Extract text with educational optimizations
-            text = self.pdf_to_text(tmp_path)
+            # Enhance contrast for better text recognition
+            enhancer = ImageEnhance.Contrast(image)
+            image = enhancer.enhance(1.2)
             
-            # Clean up temporary file
-            os.unlink(tmp_path)
-            print("🗑️  Temporary file cleaned up")
+            # Enhance sharpness
+            enhancer = ImageEnhance.Sharpness(image)
+            image = enhancer.enhance(1.1)
             
-            return text
+            # Apply slight blur to reduce noise
+            image = image.filter(ImageFilter.UnsharpMask(radius=1, percent=150, threshold=3))
+            
+            return image
             
         except Exception as e:
-            print(f"❌ Error processing uploaded educational file: {str(e)}")
-            return ""
+            print(f"⚠️  Image enhancement failed: {e}")
+            return image  # Return original if enhancement fails
+    
+    def create_image_mappings(self, parsed_data: Dict, image_info_list: List[Dict]) -> Dict[str, str]:
+        """
+        Create mappings between image references in questions and actual stored files.
+        
+        Args:
+            parsed_data: Parsed question paper data
+            image_info_list: List of extracted image information
+            
+        Returns:
+            Dictionary mapping references to stored file paths
+        """
+        mappings = {}
+        
+        try:
+            questions = parsed_data.get('questions', [])
+            
+            for question in questions:
+                image_links = question.get('image_links_used', [])
+                
+                for link in image_links:
+                    # Find corresponding image info
+                    for image_info in image_info_list:
+                        relative_path = image_info['relative_path']
+                        
+                        # Check if this link matches this image
+                        if self.is_link_match(link, image_info):
+                            web_path = f"/data/{relative_path}"
+                            mappings[link] = web_path
+                            print(f"🔗 Mapped: {link} -> {web_path}")
+                            break
+            
+            return mappings
+            
+        except Exception as e:
+            print(f"❌ Error creating image mappings: {e}")
+            return {}
+    
+    def is_link_match(self, link: str, image_info: Dict) -> bool:
+        """
+        Check if a link matches an image based on various criteria.
+        
+        Args:
+            link: Image link from LLM parsing
+            image_info: Image information dictionary
+            
+        Returns:
+            True if they match, False otherwise
+        """
+        try:
+            page_num = image_info['page_number']
+            relative_path = image_info['relative_path']
+            stored_filename = image_info['stored_filename']
+            
+            link_lower = link.lower()
+            
+            # Direct path matching
+            if relative_path.lower() in link_lower or stored_filename.lower() in link_lower:
+                return True
+            
+            # Page number matching
+            if f"page_{page_num}" in link_lower or f"page{page_num}" in link_lower:
+                return True
+            
+            # Figure/diagram matching with page number
+            if any(keyword in link_lower for keyword in ['figure', 'fig', 'diagram', 'image']):
+                import re
+                numbers = re.findall(r'\d+', link)
+                if numbers and int(numbers[0]) == page_num:
+                    return True
+            
+            return False
+            
+        except Exception:
+            return False
+    
+    def print_processing_summary(self, source_filename: str, parsed_data: Dict):
+        """
+        Print a comprehensive summary of the processing results.
+        
+        Args:
+            source_filename: Name of the processed file
+            parsed_data: Parsed question paper data
+        """
+        print("\n" + "=" * 80)
+        print("📊 PROCESSING SUMMARY")
+        print("=" * 80)
+        
+        metadata = parsed_data.get('metadata', {})
+        questions = parsed_data.get('questions', [])
+        unmatched_images = parsed_data.get('unmatched_image_links', [])
+        
+        print(f"📄 File: {source_filename}")
+        print(f"⏱️  Processing Time: {self.processing_stats['processing_time']:.2f} seconds")
+        print(f"📖 Pages Processed: {self.processing_stats['pages_processed']}")
+        print(f"🖼️  Images Extracted: {self.processing_stats['images_extracted']}")
+        print(f"❓ Questions Found: {len(questions)}")
+        
+        print("\n📋 METADATA:")
+        for key, value in metadata.items():
+            if value:
+                print(f"  • {key.replace('_', ' ').title()}: {value}")
+        
+        print(f"\n❓ QUESTIONS BREAKDOWN:")
+        question_types = {}
+        questions_with_images = 0
+        
+        for question in questions:
+            q_type = question.get('question_type', 'Unknown')
+            question_types[q_type] = question_types.get(q_type, 0) + 1
+            
+            if question.get('image_references_in_text') or question.get('image_links_used'):
+                questions_with_images += 1
+        
+        for q_type, count in question_types.items():
+            print(f"  • {q_type}: {count}")
+        
+        print(f"  • Questions with Images: {questions_with_images}")
+        
+        if unmatched_images:
+            print(f"\n⚠️  UNMATCHED IMAGES: {len(unmatched_images)}")
+            for img in unmatched_images[:3]:  # Show first 3
+                print(f"  • {img}")
+            if len(unmatched_images) > 3:
+                print(f"  • ... and {len(unmatched_images) - 3} more")
+        
+        print("\n" + "=" * 80)
+        print("✅ PROCESSING COMPLETED SUCCESSFULLY!")
+        print("=" * 80)
+    
+    def get_processing_stats(self) -> Dict:
+        """Get current processing statistics."""
+        return self.processing_stats.copy()
+    
+    def reset_stats(self):
+        """Reset processing statistics."""
+        self.processing_stats = {
+            'pages_processed': 0,
+            'images_extracted': 0,
+            'questions_found': 0,
+            'processing_time': 0
+        }
+    
+    # Legacy method for backward compatibility
+    def process_pdf(self, pdf_path: str, source_filename: Optional[str] = None) -> bool:
+        """
+        Legacy method that calls the comprehensive processing.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            source_filename: Original filename
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.process_pdf_comprehensive(pdf_path, source_filename)
+    
+    def extract_text_with_confidence(self, pdf_path: str) -> Tuple[str, float]:
+        """
+        Extract text and return confidence score.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            
+        Returns:
+            Tuple of (extracted_text, confidence_score)
+        """
+        try:
+            text = self.extract_text_from_pdf(pdf_path)
+            
+            # Calculate confidence based on various factors
+            confidence = 0.0
+            
+            if text:
+                # Text length factor
+                length_factor = min(len(text) / 1000, 1.0)  # Max 1.0 for 1000+ chars
+                
+                # Word count factor
+                words = text.split()
+                word_factor = min(len(words) / 100, 1.0)  # Max 1.0 for 100+ words
+                
+                # Special character ratio (lower is better for clean text)
+                import string
+                special_chars = sum(1 for c in text if c in string.punctuation)
+                special_ratio = special_chars / len(text) if text else 1
+                special_factor = max(0, 1 - special_ratio * 5)  # Penalty for too many special chars
+                
+                # Combine factors
+                confidence = (length_factor * 0.4 + word_factor * 0.4 + special_factor * 0.2) * 100
+            
+            return text, min(confidence, 100.0)
+            
+        except Exception as e:
+            print(f"❌ Error in text extraction with confidence: {e}")
+            return "", 0.0

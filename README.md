@@ -1,265 +1,367 @@
-# PDF Question Parser
+# 🎓 Enhanced OCR Question Paper Parser
 
-A Python-based OCR application that extracts questions from PDF files, parses them using Google's Gemini LLM, and stores them in a database with a user-friendly Streamlit interface.
+A comprehensive Python application that transforms PDF question papers into structured data with advanced image support, metadata extraction, and intelligent question parsing using Google's Gemini LLM.
 
-## 🚀 Features
+## ✨ Key Features
 
-- **OCR Processing**: Extract text from PDF files using Tesseract OCR
-- **AI-Powered Parsing**: Use Google's Gemini LLM to intelligently parse and categorize questions
-- **Database Storage**: Store questions in SQLite database with metadata
-- **Web Interface**: Modern Streamlit-based UI for easy interaction
-- **Multiple Export Formats**: Download results as JSON, CSV, or Excel
-- **Search & Filter**: Find questions by content, type, or source file
-- **Statistics & Analytics**: View processing statistics and question distribution
+### 🚀 **Enhanced Processing Pipeline**
+- **Image Extraction**: Automatically extracts and stores images from PDF pages
+- **Advanced OCR**: Optimized text extraction with confidence scoring
+- **Smart LLM Parsing**: Uses Google Gemini with sophisticated prompts for accurate question parsing
+- **Metadata Detection**: Extracts paper metadata (subject, school, marks, time limit, instructions)
+- **Image Reference Matching**: Intelligently links question text to extracted images
 
-## 📋 Requirements
+### 📊 **Advanced Database Schema**
+- **Paper Metadata**: Complete paper information storage
+- **Enhanced Questions**: Comprehensive question structure with image support
+- **Image Management**: Full image metadata and storage tracking
+- **Legacy Compatibility**: Backward compatibility with existing data
 
-### System Dependencies
-- **Python 3.8+**
-- **Tesseract OCR** (for text extraction from images)
-  - Ubuntu/Debian: `sudo apt-get install tesseract-ocr`
-  - macOS: `brew install tesseract`
-  - Windows: Download from [GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
+### 🖼️ **Image Support**
+- **Automatic Extraction**: PDF pages converted to high-quality images
+- **Smart Storage**: Organized folder structure by source file
+- **Reference Matching**: Links image references in text to actual stored files
+- **Web Display**: Images rendered in UI with proper paths
 
-### API Requirements
-- **Google Gemini API Key** (Get from [Google AI Studio](https://makersuite.google.com/app/apikey))
+### 🎯 **Question Types Supported**
+- Multiple Choice Questions (MCQ)
+- Short Answer Questions
+- Long Answer/Descriptive Questions
+- Fill-in-the-Blanks
+- True/False Questions
+- Diagram-based Questions
+- Passage-based Questions
+- Assertion-Reason Questions
+- Numerical Problems
+- Definition Questions
 
-## 🛠️ Installation
+### 🌐 **Modern Web Interface**
+- **Multi-page Application**: Process, Browse, Statistics, Gallery, Settings
+- **Real-time Processing**: Progress bars and status updates
+- **Image Gallery**: View all extracted images with question context
+- **Advanced Statistics**: Comprehensive analytics with charts
+- **Responsive Design**: Modern UI with custom styling
 
-### Quick Setup
-1. Clone or download this repository
-2. Run the setup script:
-   ```bash
-   python setup.py
-   ```
+## 🏗️ **System Architecture**
 
-### Manual Setup
-1. Install Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```
+📁 Enhanced OCR Application
+├── 🧠 app/
+│   ├── ocr_processor.py      # Enhanced OCR with image extraction
+│   ├── llm_parser.py         # Advanced Gemini LLM parsing
+│   ├── database_manager.py   # Enhanced database operations
+│   └── image_processor.py    # Image extraction and management
+├── ⚙️ config/
+│   └── settings.py           # Configuration management
+├── 💾 data/
+│   ├── questions.db          # Enhanced SQLite database
+│   └── images/               # Organized image storage
+│       └── [pdf_name]/       # Images per PDF file
+├── 🌐 main.py               # Enhanced Streamlit application
+└── 📚 requirements.txt       # Complete dependencies
+```
 
-2. Copy environment configuration:
-   ```bash
-   cp .env.example .env
-   ```
+## 🗄️ **Enhanced Database Schema**
 
-3. Edit `.env` file and add your Gemini API key:
-   ```env
-   GEMINI_API_KEY=your_api_key_here
-   ```
+### Paper Metadata Table
+```sql
+paper_metadata (
+    id, source_file, subject, school_name, booklet_type,
+    total_marks, time_limit, general_instructions,
+    processed_at, updated_at
+)
+```
 
-4. Create data directory:
-   ```bash
-   mkdir -p data
-   ```
+### Enhanced Questions Table
+```sql
+questions_new (
+    id, paper_id, question_number, question_text,
+    options (JSON), marks, question_type,
+    image_references_in_text (JSON), image_links_used (JSON),
+    source_file, created_at, updated_at
+)
+```
 
-## 🚀 Usage
+### Images Table
+```sql
+images (
+    id, original_filename, stored_filename, relative_path,
+    full_path, source_file, page_number, width, height,
+    file_size, created_at
+)
+```
 
-### Starting the Application
+## 🚀 **Quick Start**
+
+### 1. **Environment Setup**
 ```bash
-# Using Streamlit directly
-streamlit run main.py
+# Clone the repository
+git clone <repository-url>
+cd psle_ocr_exam
 
-# Or using Python
-python main.py
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-The application will start on `http://localhost:8501`
+### 2. **Configuration**
+```bash
+# Copy environment template
+cp .env.example .env
 
-### Using the Interface
-
-#### 1. Upload & Process
-- Navigate to "Upload & Process" page
-- Upload a PDF file (max 10MB)
-- Choose processing options:
-  - **Enhance question metadata**: Use AI to improve categorization
-  - **Save to database**: Store results for later access
-- Click "Process PDF" to start
-
-#### 2. View Questions
-- Browse all stored questions
-- Search by text or subject
-- Filter by source file
-- View detailed question information
-
-#### 3. Statistics
-- View processing statistics
-- Analyze question distribution by type and difficulty
-- Track processed files
-
-#### 4. Settings
-- View current configuration
-- Check API connection status
-- Monitor application settings
-
-### Processing Flow
-1. **PDF Upload**: User uploads a PDF file
-2. **OCR Extraction**: Text is extracted using Tesseract OCR
-3. **AI Parsing**: Gemini LLM parses and categorizes questions
-4. **Metadata Enhancement**: AI improves question metadata (optional)
-5. **Database Storage**: Questions are saved to SQLite database (optional)
-6. **Results Display**: Questions are shown with export options
-
-## 📁 Project Structure
-
-```
-pdf-question-parser/
-├── app/                    # Main application modules
-│   ├── __init__.py
-│   ├── ocr_processor.py    # OCR and PDF processing
-│   ├── llm_parser.py       # Gemini LLM integration
-│   ├── database_manager.py # Database operations
-│   └── streamlit_ui.py     # User interface
-├── config/                 # Configuration management
-│   ├── __init__.py
-│   └── settings.py         # Application settings
-├── data/                   # Database and data files
-│   └── questions.db        # SQLite database (auto-created)
-├── .env.example            # Environment variables template
-├── .env                    # Your environment variables (create this)
-├── requirements.txt        # Python dependencies
-├── setup.py               # Setup and installation script
-├── main.py                # Application entry point
-└── README.md              # This file
-```
-
-## ⚙️ Configuration
-
-### Environment Variables (.env)
-
-```env
-# Required: Gemini API Configuration
+# Edit .env file and add your Gemini API key
 GEMINI_API_KEY=your_gemini_api_key_here
-
-# Optional: Database Configuration
-DATABASE_PATH=./data/questions.db
-
-# Optional: OCR Configuration
-TESSERACT_PATH=/usr/bin/tesseract
-OCR_LANGUAGE=eng
-
-# Optional: Application Configuration
-APP_TITLE=PDF Question Parser
-APP_PORT=8501
-DEBUG_MODE=False
-
-# Optional: File Upload Configuration
-MAX_FILE_SIZE_MB=10
-ALLOWED_EXTENSIONS=pdf
-
-# Optional: Gemini Model Configuration
-GEMINI_MODEL=gemini-pro
-GEMINI_TEMPERATURE=0.2
-GEMINI_MAX_TOKENS=2048
 ```
 
-### Question Data Structure
+### 3. **System Dependencies**
+```bash
+# macOS
+brew install tesseract poppler
 
-Each parsed question contains:
-- **question_id**: Sequential identifier
-- **question_text**: The actual question text
-- **question_type**: multiple_choice, true_false, short_answer, essay, or other
-- **options**: Array of multiple choice options (if applicable)
-- **correct_answer**: Correct answer if available
-- **difficulty_level**: easy, medium, hard, or unknown
-- **subject_area**: Subject or topic area
-- **page_number**: Source page number
-- **source_file**: Original PDF filename
-- **created_at**: Processing timestamp
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install tesseract-ocr poppler-utils
 
-## 🔧 Troubleshooting
+# Check installation
+tesseract --version
+```
 
-### Common Issues
+### 4. **Run Application**
+```bash
+# Start the enhanced application
+python3 -m streamlit run main.py
 
-#### 1. Tesseract OCR Not Found
-**Error**: `TesseractNotFoundError`
-**Solution**: Install Tesseract OCR for your operating system
+# Or use the run script
+chmod +x run.sh
+./run.sh
+```
 
-#### 2. Gemini API Key Issues
-**Error**: `ValueError: Gemini API key is required`
-**Solution**: Add your API key to the `.env` file
+## 🎯 **Advanced Usage**
 
-#### 3. PDF Processing Fails
-**Error**: No text extracted from PDF
-**Possible causes**:
-- PDF contains only images (OCR will process these)
-- PDF is password protected
-- PDF is corrupted
-- Insufficient permissions
+### **Processing Pipeline**
+1. **Upload PDF**: Select a clear, high-quality PDF question paper
+2. **Automatic Processing**: 
+   - Images extracted from all pages
+   - OCR performed with optimization
+   - Advanced LLM parsing with metadata extraction
+   - Smart image reference matching
+   - Comprehensive database storage
+3. **Review Results**: View parsed questions, metadata, and images
+4. **Browse & Analyze**: Use the multi-page interface for exploration
 
-#### 4. Import Errors
-**Error**: `ModuleNotFoundError`
-**Solution**: Install dependencies: `pip install -r requirements.txt`
+### **Advanced Features**
 
-#### 5. Port Already in Use
-**Error**: `Address already in use`
-**Solution**: Change port in `.env` file or stop other applications using port 8501
+#### **Image Reference Matching**
+The system automatically matches text references like "Figure 1.1" or "Diagram A" to actual extracted images using:
+- Pattern recognition
+- Page number correlation
+- Fuzzy matching algorithms
+- Filename analysis
 
-### Debug Mode
+#### **Metadata Extraction**
+Automatically detects and extracts:
+- **Subject**: Subject area (Physics, Math, English, etc.)
+- **School Name**: Institution name
+- **Booklet Type**: Set identifiers (Set A, Code 101, etc.)
+- **Total Marks**: Maximum marks for the paper
+- **Time Limit**: Duration allowed
+- **Instructions**: General instructions for the paper
 
-Enable debug mode by setting `DEBUG_MODE=True` in your `.env` file for more detailed error messages.
+#### **Question Type Detection**
+Advanced classification of questions into specific types:
+- **MCQ**: Multiple choice with option detection
+- **Diagram-based**: Questions referencing images
+- **Passage-based**: Questions with reading passages
+- **Numerical**: Mathematical problem solving
+- **And more...**
 
-## 📊 Performance Considerations
+## 📊 **Database Access**
 
-- **PDF Size**: Larger PDFs take longer to process
-- **Image Quality**: Higher DPI improves OCR accuracy but increases processing time
-- **API Limits**: Gemini API has rate limits and token limits
-- **Memory Usage**: Large PDFs may require significant memory for image processing
+### **Command Line Interface**
+```bash
+# View database information
+python read_database.py info
 
-## 🔒 Security Notes
+# Show database schema
+python read_database.py schema
 
-- **API Keys**: Never commit your `.env` file to version control
-- **File Uploads**: Files are processed locally and temporarily stored
-- **Database**: SQLite database is stored locally
-- **Network**: Application runs locally by default
+# Export data
+python read_database.py export-json output.json
+python read_database.py export-csv output.csv
 
-## 🧪 Development
+# Search functionality
+python read_database.py search "physics"
+```
 
-### Adding New Question Types
-1. Modify the prompt in `llm_parser.py`
-2. Update the database schema if needed
-3. Adjust the UI components accordingly
+### **Programmatic Access**
+```python
+from app.database_manager import DatabaseManager
 
-### Custom OCR Settings
-Modify OCR parameters in `ocr_processor.py`:
-- DPI settings for image conversion
-- Tesseract configuration parameters
-- Image preprocessing options
+# Initialize database manager
+db = DatabaseManager()
 
-### Database Extensions
-The SQLite database can be extended with additional tables or fields by modifying `database_manager.py`.
+# Get complete paper data
+paper_data = db.get_paper_by_file("sample.pdf")
 
-## 📄 License
+# Get all papers
+papers = db.get_all_papers()
 
-This project is open source. Feel free to modify and distribute according to your needs.
+# Get statistics
+stats = db.get_statistics()
+```
 
-## 🤝 Contributing
+## 🔧 **Configuration Options**
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+### **Environment Variables** (`.env`)
+```env
+# Required
+GEMINI_API_KEY=your_gemini_api_key
 
-## 📞 Support
+# Optional customization
+DATABASE_PATH=./data/questions.db
+OCR_LANGUAGE=eng
+TESSERACT_PATH=/usr/local/bin/tesseract
+DEBUG=false
+```
 
-For issues and questions:
-1. Check the troubleshooting section
-2. Review the configuration settings
-3. Ensure all dependencies are properly installed
-4. Check that your Gemini API key is valid and has sufficient quota
+### **Advanced Settings** (`config/settings.py`)
+- OCR optimization parameters
+- Image processing settings
+- LLM parsing configuration
+- Database connection options
 
-## 🎯 Future Enhancements
+## 🖼️ **Image Management**
 
-- Support for additional file formats (DOCX, TXT, etc.)
-- Batch processing of multiple files
-- Advanced question analytics
-- Export to quiz platforms
-- Multi-language OCR support
-- Cloud deployment options
-- Real-time collaboration features
+### **Storage Structure**
+```
+data/images/
+├── sample_paper/
+│   ├── sample_paper_page_1_20231201_143022.png
+│   ├── sample_paper_page_2_20231201_143023.png
+│   └── ...
+└── another_paper/
+    └── ...
+```
+
+### **Image Processing Features**
+- **High-Quality Extraction**: 300 DPI PNG format
+- **Automatic Optimization**: Web-optimized sizing
+- **Metadata Storage**: Dimensions, file size, source tracking
+- **Web Accessibility**: Proper paths for UI rendering
+
+## 📈 **Analytics & Statistics**
+
+The enhanced system provides comprehensive analytics:
+
+- **Processing Statistics**: Pages, images, questions counts
+- **Question Type Distribution**: Visual charts and breakdowns
+- **Subject Analysis**: Papers by subject area
+- **Image Usage**: Images per paper, reference matching rates
+- **Performance Metrics**: Processing times, confidence scores
+
+## � **Troubleshooting**
+
+### **Common Issues**
+
+#### **OCR Quality Issues**
+```bash
+# Check Tesseract installation
+tesseract --version
+
+# Verify Poppler installation
+pdftoppm -h
+
+# Test with high-quality PDF
+```
+
+#### **Image Processing Issues**
+```bash
+# Check available disk space
+df -h
+
+# Verify image directory permissions
+ls -la data/images/
+```
+
+#### **LLM Parsing Issues**
+```bash
+# Verify API key
+python -c "from config.settings import settings; print(bool(settings.GEMINI_API_KEY))"
+
+# Check internet connectivity
+curl -I https://generativelanguage.googleapis.com
+```
+
+#### **Database Issues**
+```bash
+# Reset database (WARNING: Deletes all data)
+rm data/questions.db
+python -c "from app.database_manager import DatabaseManager; DatabaseManager()"
+```
+
+## 🤝 **Contributing**
+
+### **Development Setup**
+```bash
+# Install development dependencies
+pip install -r requirements.txt
+
+# Run tests
+pytest
+
+# Code formatting
+black .
+flake8 .
+```
+
+### **Code Structure**
+- **OCR Processing**: `app/ocr_processor.py`
+- **LLM Integration**: `app/llm_parser.py`
+- **Database Operations**: `app/database_manager.py`
+- **Image Management**: `app/image_processor.py`
+- **Web Interface**: `main.py`
+
+## 📋 **Changelog**
+
+### **v2.0.0 - Enhanced Edition**
+- ✨ Image extraction and storage system
+- 🧠 Advanced LLM parsing with sophisticated prompts
+- 📊 Enhanced database schema with metadata support
+- 🖼️ Smart image reference matching
+- 🌐 Multi-page web interface with image gallery
+- 📈 Comprehensive analytics and statistics
+- 🔧 Improved error handling and diagnostics
+
+### **v1.0.0 - Initial Release**
+- Basic OCR processing
+- Simple question extraction
+- Basic database storage
+- Simple web interface
+
+## 📄 **License**
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 **Acknowledgments**
+
+- **Google Generative AI**: For powerful LLM capabilities
+- **Tesseract OCR**: For robust text recognition
+- **Streamlit**: For the intuitive web framework
+- **pdf2image & Poppler**: For PDF processing
+- **OpenCV & Pillow**: For image processing
+
+## 📞 **Support**
+
+For issues, feature requests, or questions:
+
+1. **Check Documentation**: Review this README and code comments
+2. **Search Issues**: Look for existing GitHub issues
+3. **Create Issue**: Submit detailed bug reports or feature requests
+4. **Community**: Join discussions in the repository
 
 ---
 
-**Happy Question Parsing! 📝✨**
+**🎯 Transform your question papers into structured, searchable data with advanced AI-powered parsing and comprehensive image support!**

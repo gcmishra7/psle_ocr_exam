@@ -5,374 +5,426 @@ import re
 from config.settings import settings
 
 class LLMParser:
-    """Handles parsing of extracted text using Gemini LLM, optimized for educational MCQ content."""
+    """Enhanced LLM parser for extracting structured question paper data with metadata and image support."""
     
     def __init__(self):
-        """Initialize LLM parser with Gemini configuration."""
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("Gemini API key is required")
+        """Initialize the LLM parser with Gemini API."""
+        self.api_key = settings.GEMINI_API_KEY
+        if not self.api_key:
+            raise ValueError("Gemini API key not found in environment variables")
         
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
-        self.temperature = settings.GEMINI_TEMPERATURE
-        self.max_tokens = settings.GEMINI_MAX_TOKENS
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
     
-    def create_mcq_parsing_prompt(self, text: str) -> str:
+    def create_enhanced_prompt(self, question_paper_text: str, image_links: List[str]) -> str:
         """
-        Create a specialized prompt for parsing MCQ questions from educational content.
+        Create the enhanced prompt with question paper text and image links.
         
         Args:
-            text: Raw text extracted from PDF
+            question_paper_text: Raw OCR text from the question paper
+            image_links: List of available image links/paths
             
         Returns:
-            Formatted prompt optimized for MCQ parsing
+            Formatted prompt for the LLM
         """
-        prompt = f"""
-You are an expert at parsing Multiple Choice Questions (MCQ) from educational content. 
-The text below contains questions extracted from an educational document that may include:
-- Questions with diagrams or images (referenced in the question text)
-- Multiple choice options numbered (1), (2), (3), (4) or lettered (A), (B), (C), (D)
-- Questions that span multiple lines
-- Mixed content with both question text and option text
+        # Convert image links to JSON string
+        image_links_json = json.dumps(image_links)
+        
+        prompt = f"""As an expert OCR Agent, your task is to meticulously parse the provided question paper text and associated image links. Your goal is to extract all relevant information and structure it into a comprehensive JSON object, following the detailed specifications below.
 
-For each question found, provide a JSON object with this structure:
+Input:
+You will receive two inputs:
+
+{{$question_paper_text}}: The raw text content extracted from the question paper.
+{{$image_links}}: A JSON string representing an array of URLs for images that might be referenced in the question paper. Each URL may contain filename information that can help in matching.
+
+Output Structure - JSON Object:
+
+Your output must be a single JSON object. Do not include any conversational text, explanations, or markdown outside of the JSON block.
+
 {{
-    "question_id": "sequential number starting from 1",
-    "question_text": "the complete question text including any references to diagrams/images",
-    "question_type": "multiple_choice",
-    "options": [
-        "option 1 text",
-        "option 2 text", 
-        "option 3 text",
-        "option 4 text"
-    ],
-    "correct_answer": "correct answer if mentioned, otherwise empty string",
-    "difficulty_level": "easy, medium, hard, or unknown",
-    "subject_area": "the subject (science, math, english, etc.)",
-    "page_number": "page number if mentioned",
-    "has_diagram": true/false,
-    "diagram_description": "brief description of any diagram/image referenced"
+  "metadata": {{
+    "subject": "string | null",
+    "school_name": "string | null",
+    "booklet_type": "string | null",
+    "total_marks": "string | null",
+    "time_limit": "string | null",
+    "general_instructions": "string | null"
+  }},
+  "questions": [
+    {{
+      "question_number": "string",
+      "question_text": "string",
+      "options": {{
+        // "A": "string",
+        // "B": "string"
+        // ... (if MCQ, keys are option identifiers, values are option text)
+      }},
+      "marks": "string | null",
+      "question_type": "string",
+      "image_references_in_text": ["string"],
+      "image_links_used": ["URL"]
+    }}
+    // ... more question objects
+  ],
+  "unmatched_image_links": ["URL"]
 }}
 
-IMPORTANT PARSING RULES:
-1. Look for question patterns like "Study the diagram...", "Look at the figure...", "Which of the following..."
-2. Group options that follow a question (numbered 1-4 or lettered A-D)
-3. If a question references a diagram/image, set "has_diagram": true
-4. Keep the complete question text, including setup/context
-5. Clean up OCR artifacts but preserve meaning
-6. If options are split across lines, combine them properly
-7. Handle both numbered (1), (2), (3), (4) and lettered (A), (B), (C), (D) options
+Detailed Extraction Rules and Formatting Guidelines:
 
-Text to analyze:
-{text}
+1. metadata Object:
+* subject: Identify the main subject of the paper (e.g., "Physics", "English Literature", "Algebra"). If not explicitly stated, infer the best possible subject. If unknown, use null.
+* school_name: Extract the name of the school, college, or institution. If not found, use null.
+* booklet_type: Look for "Set A", "Booklet B", "Code 101", etc. If multiple are present, list the most prominent one or use null.
+* total_marks: Find the overall total marks for the paper (e.g., "100 Marks", "Max Marks: 70"). Extract the numerical value and any unit. If not found, use null.
+* time_limit: Find the total time duration (e.g., "3 Hours", "90 minutes"). If not found, use null.
+* general_instructions: Concatenate all general instructions applicable to the entire paper into a single string. If no general instructions are found, use null.
 
-Return a JSON array of questions. If no questions are found, return an empty array [].
-Focus on educational content and be thorough in capturing complete questions with all their options.
-"""
+2. questions Array:
+* Each element in this array will be a JSON object representing a single question.
+* Process questions sequentially as they appear in the question_paper_text.
+* question_number:
+  * Extract the leading number or identifier for each question (e.g., "1.", "Q2", "3(a)", "IV."). Be precise.
+* question_text:
+  * Capture the complete text of the question. This includes any introductory phrases, diagrams, tables, or passages that the question refers to, along with the actual question prompt.
+  * Crucially, retain any explicit image references within the text (e.g., "refer to Figure 1.1", "as shown in Diagram A").
+* options:
+  * If the question is a Multiple Choice Question (MCQ), extract all options.
+  * Represent options as a JSON object where keys are the option labels (e.g., "A", "B", "C", "D", "1", "2", "i", "ii") and values are the corresponding option texts.
+  * If it's not an MCQ (e.g., short answer, long answer), this field should be an empty JSON object {{}}.
+* marks:
+  * Extract the marks allocated for the specific question. This is often in parentheses (e.g., "(2)", "[5 marks]", "3m"). Preserve the original string if units are involved, otherwise just the number. If not found, use null.
+* question_type:
+  * Categorize the question type based on its content and structure. Common types include:
+    * "MCQ" (Multiple Choice Question)
+    * "Short Answer"
+    * "Long Answer" / "Descriptive"
+    * "Fill-in-the-Blanks"
+    * "True/False"
+    * "Match the Following"
+    * "Passage-based" (if a significant passage precedes the question)
+    * "Diagram-based" (if the question relies heavily on an image)
+    * "Assertion-Reason"
+    * "Numerical Problem"
+    * "Definition"
+  * If unsure or a specific type is not covered, use "General".
+* image_references_in_text:
+  * An array of string references to images found within the question_text (e.g., "Figure 1", "Diagram A", "Table 5.2"). Search for common patterns like "Figure X", "Fig. X", "Diagram X", "Image X", "Illustration X", "Table X".
+  * If no image references are found, this should be an empty array [].
+* image_links_used:
+  * An array of URLs from the {{$image_links}} input that directly correspond to the image_references_in_text for this specific question.
+  * Crucially, you must match the extracted image_references_in_text to the provided image_links. Assume image filenames in the URLs often contain variations of the reference (e.g., figure_1_1.png might match "Figure 1.1", diagramA.jpg might match "Diagram A"). Perform fuzzy matching if necessary but prioritize exact matches.
+  * Only include links that are explicitly referenced and used in that specific question.
+  * If image references are found in the text but no matching link is available in {{$image_links}}, then the image_links_used array for that question should remain empty [].
+
+3. unmatched_image_links Array:
+* List any URLs from the original {{$image_links}} array that were not linked to any question in the questions array. This helps identify potentially extraneous images or missed references. If all images are matched, this array should be empty [].
+
+Example of Desired Output Format (Illustrative - your output should be based on the actual input):
+
+{{
+  "metadata": {{
+    "subject": "Biology",
+    "school_name": "Galaxy Academy",
+    "booklet_type": "Set R",
+    "total_marks": "70",
+    "time_limit": "2.5 Hours",
+    "general_instructions": "All questions are compulsory. Draw neat and labelled diagrams wherever necessary. Marks for each question are indicated in brackets."
+  }},
+  "questions": [
+    {{
+      "question_number": "1",
+      "question_text": "Which of the following is the powerhouse of the cell?",
+      "options": {{
+        "A": "Nucleus",
+        "B": "Mitochondria",
+        "C": "Cytoplasm",
+        "D": "Ribosome"
+      }},
+      "marks": "1",
+      "question_type": "MCQ",
+      "image_references_in_text": [],
+      "image_links_used": []
+    }},
+    {{
+      "question_number": "2",
+      "question_text": "Observe the given figure of a plant cell (Fig. 2.1) and label parts A, B, and C.",
+      "options": {{}},
+      "marks": "3",
+      "question_type": "Diagram-based",
+      "image_references_in_text": ["Fig. 2.1"],
+      "image_links_used": ["https://example.com/asset/images/fig_2_1_plant_cell.png"]
+    }}
+  ],
+  "unmatched_image_links": [
+    "https://example.com/asset/images/school_logo.png",
+    "https://example.com/asset/images/header_design.jpg"
+  ]
+}}
+
+Now, process the following input accordingly:
+{question_paper_text}, {image_links_json}"""
+        
         return prompt
     
-    def preprocess_mcq_text(self, text: str) -> str:
+    def parse_questions_enhanced(self, ocr_text: str, image_links: Optional[List[str]] = None) -> Optional[Dict]:
         """
-        Preprocess OCR text to improve MCQ parsing.
+        Parse OCR text using the enhanced prompt structure.
         
         Args:
-            text: Raw OCR text
+            ocr_text: Raw text extracted from the question paper
+            image_links: List of available image links/paths
             
         Returns:
-            Cleaned and structured text
-        """
-        lines = text.split('\n')
-        processed_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Fix common OCR errors in MCQ format
-            line = re.sub(r'\(\s*([1-4A-Da-d])\s*\)', r'(\1)', line)  # Fix spaced parentheses
-            line = re.sub(r'([1-4A-Da-d])\s*[\.\)]\s*', r'(\1) ', line)  # Normalize option format
-            
-            # Fix common words that get OCR'd incorrectly
-            line = re.sub(r'\b[Ww]hich\b', 'Which', line)
-            line = re.sub(r'\b[Tt]he\b', 'the', line)
-            line = re.sub(r'\b[Oo]f\b', 'of', line)
-            line = re.sub(r'\b[Ff]ollowing\b', 'following', line)
-            
-            processed_lines.append(line)
-        
-        return '\n'.join(processed_lines)
-    
-    def parse_questions(self, text: str) -> List[Dict]:
-        """
-        Parse MCQ questions from extracted text using Gemini LLM.
-        
-        Args:
-            text: Raw text from OCR
-            
-        Returns:
-            List of parsed questions as dictionaries
+            Parsed question paper data with metadata and questions, or None if failed
         """
         try:
-            # Preprocess text for better MCQ parsing
-            processed_text = self.preprocess_mcq_text(text)
+            if image_links is None:
+                image_links = []
             
-            prompt = self.create_mcq_parsing_prompt(processed_text)
+            print("🧠 Processing with enhanced LLM parser...")
             
-            print("🤖 Parsing educational content with Gemini LLM...")
+            # Create the enhanced prompt
+            prompt = self.create_enhanced_prompt(ocr_text, image_links)
             
-            # Generate response with retry logic
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    response = self.model.generate_content(
-                        prompt,
-                        generation_config=genai.types.GenerationConfig(
-                            temperature=self.temperature,
-                            max_output_tokens=self.max_tokens,
-                        )
-                    )
-                    
-                    # Extract and parse JSON response
-                    response_text = response.text.strip()
-                    print(f"📝 Received response from Gemini (attempt {attempt + 1})")
-                    
-                    # Try to extract JSON from response
-                    questions = self._extract_json_from_response(response_text)
-                    
-                    if questions:
-                        print(f"✅ Successfully parsed {len(questions)} MCQ questions")
-                        return self._validate_and_clean_questions(questions)
-                    
-                except Exception as e:
-                    print(f"⚠️  Attempt {attempt + 1} failed: {e}")
-                    if attempt == max_retries - 1:
-                        raise e
-            
-            # If all retries failed, try fallback parsing
-            print("🔄 Trying fallback MCQ parsing...")
-            return self._fallback_mcq_parse(processed_text)
-                
-        except Exception as e:
-            print(f"❌ Error calling Gemini API: {e}")
-            return self._fallback_mcq_parse(text)
-    
-    def _extract_json_from_response(self, response_text: str) -> List[Dict]:
-        """Extract JSON array from Gemini response."""
-        # Try to find JSON array in response
-        json_patterns = [
-            r'\[.*?\]',  # Look for array
-            r'\{.*?\}',  # Look for single object
-        ]
-        
-        for pattern in json_patterns:
-            matches = re.findall(pattern, response_text, re.DOTALL)
-            for match in matches:
-                try:
-                    parsed = json.loads(match)
-                    if isinstance(parsed, list):
-                        return parsed
-                    elif isinstance(parsed, dict):
-                        return [parsed]
-                except json.JSONDecodeError:
-                    continue
-        
-        # Try parsing the entire response
-        try:
-            return json.loads(response_text)
-        except json.JSONDecodeError:
-            return []
-    
-    def _validate_and_clean_questions(self, questions: List[Dict]) -> List[Dict]:
-        """Validate and clean parsed questions."""
-        cleaned_questions = []
-        
-        for i, question in enumerate(questions, 1):
-            if not isinstance(question, dict):
-                continue
-            
-            # Ensure required fields
-            cleaned_question = {
-                "question_id": str(question.get("question_id", i)),
-                "question_text": str(question.get("question_text", "")).strip(),
-                "question_type": question.get("question_type", "multiple_choice"),
-                "options": question.get("options", []),
-                "correct_answer": str(question.get("correct_answer", "")).strip(),
-                "difficulty_level": question.get("difficulty_level", "unknown"),
-                "subject_area": question.get("subject_area", "unknown"),
-                "page_number": str(question.get("page_number", "unknown")),
-                "has_diagram": bool(question.get("has_diagram", False)),
-                "diagram_description": str(question.get("diagram_description", "")).strip()
-            }
-            
-            # Only include questions with actual content
-            if cleaned_question["question_text"] and len(cleaned_question["question_text"]) > 10:
-                cleaned_questions.append(cleaned_question)
-        
-        return cleaned_questions
-    
-    def _fallback_mcq_parse(self, text: str) -> List[Dict]:
-        """
-        Fallback parsing method using regex patterns for MCQ content.
-        
-        Args:
-            text: Raw text to parse
-            
-        Returns:
-            List of questions found using MCQ-specific patterns
-        """
-        print("🔄 Using fallback MCQ parsing...")
-        questions = []
-        lines = text.split('\n')
-        current_question = None
-        current_options = []
-        question_id = 1
-        
-        # MCQ patterns
-        question_patterns = [
-            r'^\s*\d+\.\s*(.+)',  # 1. Question text
-            r'^\s*QUESTION\s*\d+',  # QUESTION 1
-            r'.*[Ww]hich.*\?',  # Which ... ?
-            r'.*[Ss]tudy.*diagram.*',  # Study the diagram
-            r'.*[Ll]ook.*figure.*',  # Look at the figure
-        ]
-        
-        option_patterns = [
-            r'^\s*\(([1-4A-Da-d])\)\s*(.+)',  # (1) option text
-            r'^\s*([1-4A-Da-d])[\.\)]\s*(.+)',  # 1. option text
-        ]
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            
-            # Check if line is a question
-            is_question = False
-            for pattern in question_patterns:
-                if re.match(pattern, line, re.IGNORECASE):
-                    # Save previous question if exists
-                    if current_question and current_options:
-                        questions.append(self._create_fallback_question(
-                            question_id, current_question, current_options
-                        ))
-                        question_id += 1
-                    
-                    current_question = line
-                    current_options = []
-                    is_question = True
-                    break
-            
-            if is_question:
-                continue
-            
-            # Check if line is an option
-            is_option = False
-            for pattern in option_patterns:
-                match = re.match(pattern, line)
-                if match:
-                    option_text = match.group(2) if len(match.groups()) > 1 else match.group(1)
-                    current_options.append(option_text.strip())
-                    is_option = True
-                    break
-            
-            # If not an option and we have a current question, it might be continuation
-            if not is_option and current_question and not current_options:
-                if line.endswith('?') or len(line) > 20:
-                    current_question += " " + line
-        
-        # Don't forget the last question
-        if current_question and current_options:
-            questions.append(self._create_fallback_question(
-                question_id, current_question, current_options
-            ))
-        
-        print(f"📋 Fallback parsing found {len(questions)} questions")
-        return questions
-    
-    def _create_fallback_question(self, question_id: int, question_text: str, options: List[str]) -> Dict:
-        """Create a question dictionary from fallback parsing."""
-        # Detect if question mentions diagrams/images
-        has_diagram = any(word in question_text.lower() for word in [
-            'diagram', 'figure', 'image', 'picture', 'chart', 'graph', 'drawing'
-        ])
-        
-        # Basic subject detection
-        subject_keywords = {
-            'science': ['energy', 'force', 'motion', 'chemical', 'physical', 'biology', 'physics'],
-            'math': ['calculate', 'equation', 'number', 'formula', 'solve'],
-            'english': ['word', 'sentence', 'grammar', 'meaning', 'passage'],
-            'history': ['year', 'period', 'historical', 'event', 'date'],
-            'geography': ['map', 'location', 'country', 'region', 'climate']
-        }
-        
-        subject_area = "unknown"
-        for subject, keywords in subject_keywords.items():
-            if any(keyword in question_text.lower() for keyword in keywords):
-                subject_area = subject
-                break
-        
-        return {
-            "question_id": str(question_id),
-            "question_text": question_text.strip(),
-            "question_type": "multiple_choice",
-            "options": options,
-            "correct_answer": "",
-            "difficulty_level": "unknown",
-            "subject_area": subject_area,
-            "page_number": "unknown",
-            "has_diagram": has_diagram,
-            "diagram_description": "Referenced in question text" if has_diagram else ""
-        }
-    
-    def enhance_question_metadata(self, questions: List[Dict], original_text: str) -> List[Dict]:
-        """
-        Enhance questions with additional metadata using LLM.
-        
-        Args:
-            questions: List of parsed questions
-            original_text: Original text for context
-            
-        Returns:
-            Enhanced questions with better metadata
-        """
-        if not questions:
-            return questions
-        
-        try:
-            enhancement_prompt = f"""
-Analyze these MCQ questions and enhance their metadata. Focus on educational accuracy and proper categorization.
-
-Questions: {json.dumps(questions, indent=2)}
-
-For each question, improve:
-1. Subject area classification (science, mathematics, english, history, geography, etc.)
-2. Difficulty level (easy, medium, hard) based on cognitive complexity
-3. Better diagram descriptions if diagrams are referenced
-4. Question type accuracy (ensure it's truly multiple_choice)
-5. Clean up any OCR artifacts in question text and options
-
-Return the enhanced questions in the same JSON format with improved metadata.
-Pay special attention to questions that reference diagrams or images.
-"""
-            
+            # Generate response from Gemini
+            print("🤖 Sending request to Gemini API...")
             response = self.model.generate_content(
-                enhancement_prompt,
+                prompt,
                 generation_config=genai.types.GenerationConfig(
-                    temperature=0.1,  # Lower temperature for more consistent metadata
-                    max_output_tokens=self.max_tokens,
+                    temperature=0.1,
+                    max_output_tokens=8192,
+                    response_mime_type="application/json"
                 )
             )
             
-            enhanced_questions = self._extract_json_from_response(response.text.strip())
+            if not response or not response.text:
+                print("❌ Empty response from Gemini API")
+                return None
             
-            if enhanced_questions and len(enhanced_questions) == len(questions):
-                print("✨ Successfully enhanced question metadata")
-                return self._validate_and_clean_questions(enhanced_questions)
-            else:
-                print("⚠️  Enhancement failed, returning original questions")
-                return questions
+            print("✅ Received response from Gemini API")
+            
+            # Parse the JSON response
+            try:
+                parsed_data = json.loads(response.text)
                 
+                # Validate the structure
+                if not self.validate_parsed_data(parsed_data):
+                    print("⚠️  Parsed data validation failed")
+                    return None
+                
+                print(f"📊 Successfully parsed: {len(parsed_data.get('questions', []))} questions")
+                return parsed_data
+                
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON parsing error: {e}")
+                print(f"Raw response: {response.text[:500]}...")
+                return None
+            
         except Exception as e:
-            print(f"❌ Error enhancing questions: {e}")
-            return questions
+            print(f"❌ Error in enhanced LLM parsing: {e}")
+            return None
+    
+    def validate_parsed_data(self, data: Dict) -> bool:
+        """
+        Validate the structure of parsed data.
+        
+        Args:
+            data: Parsed data dictionary
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        try:
+            # Check required top-level keys
+            required_keys = ['metadata', 'questions', 'unmatched_image_links']
+            for key in required_keys:
+                if key not in data:
+                    print(f"❌ Missing required key: {key}")
+                    return False
+            
+            # Validate metadata structure
+            metadata = data['metadata']
+            if not isinstance(metadata, dict):
+                print("❌ Metadata is not a dictionary")
+                return False
+            
+            # Validate questions structure
+            questions = data['questions']
+            if not isinstance(questions, list):
+                print("❌ Questions is not a list")
+                return False
+            
+            # Validate each question
+            for i, question in enumerate(questions):
+                if not isinstance(question, dict):
+                    print(f"❌ Question {i} is not a dictionary")
+                    return False
+                
+                required_q_keys = ['question_number', 'question_text', 'options', 
+                                 'marks', 'question_type', 'image_references_in_text', 
+                                 'image_links_used']
+                
+                for key in required_q_keys:
+                    if key not in question:
+                        print(f"❌ Question {i} missing key: {key}")
+                        return False
+                
+                # Validate data types
+                if not isinstance(question.get('options'), dict):
+                    print(f"❌ Question {i} options is not a dictionary")
+                    return False
+                
+                if not isinstance(question.get('image_references_in_text'), list):
+                    print(f"❌ Question {i} image_references_in_text is not a list")
+                    return False
+                
+                if not isinstance(question.get('image_links_used'), list):
+                    print(f"❌ Question {i} image_links_used is not a list")
+                    return False
+            
+            # Validate unmatched_image_links
+            unmatched = data['unmatched_image_links']
+            if not isinstance(unmatched, list):
+                print("❌ unmatched_image_links is not a list")
+                return False
+            
+            print("✅ Data validation successful")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Validation error: {e}")
+            return False
+    
+    def extract_image_references_from_questions(self, questions: List[Dict]) -> List[str]:
+        """
+        Extract all image references mentioned in questions.
+        
+        Args:
+            questions: List of question dictionaries
+            
+        Returns:
+            List of unique image references
+        """
+        image_refs = []
+        
+        for question in questions:
+            refs = question.get('image_references_in_text', [])
+            image_refs.extend(refs)
+        
+        return list(set(image_refs))  # Remove duplicates
+    
+    def enhance_image_matching(self, parsed_data: Dict, available_images: List[Dict]) -> Dict:
+        """
+        Enhance image matching by improving the mapping between references and files.
+        
+        Args:
+            parsed_data: Parsed question paper data
+            available_images: List of available image information
+            
+        Returns:
+            Enhanced parsed data with better image matching
+        """
+        try:
+            # Create a mapping of image references to files
+            from app.image_processor import ImageProcessor
+            image_processor = ImageProcessor()
+            
+            questions = parsed_data.get('questions', [])
+            unmatched_links = list(parsed_data.get('unmatched_image_links', []))
+            
+            for question in questions:
+                image_refs = question.get('image_references_in_text', [])
+                current_links = question.get('image_links_used', [])
+                
+                if image_refs and not current_links:
+                    # Try to match references to available images
+                    mappings = image_processor.match_image_references_to_files(image_refs, available_images)
+                    
+                    # Update the question with matched links
+                    matched_links = list(mappings.values())
+                    question['image_links_used'] = matched_links
+                    
+                    # Remove matched links from unmatched list
+                    for link in matched_links:
+                        if link in unmatched_links:
+                            unmatched_links.remove(link)
+            
+            # Update unmatched links
+            parsed_data['unmatched_image_links'] = unmatched_links
+            
+            print("🔗 Enhanced image matching completed")
+            return parsed_data
+            
+        except Exception as e:
+            print(f"❌ Error enhancing image matching: {e}")
+            return parsed_data
+    
+    def fallback_parse_questions(self, ocr_text: str) -> Optional[Dict]:
+        """
+        Fallback parsing method if enhanced parsing fails.
+        
+        Args:
+            ocr_text: Raw OCR text
+            
+        Returns:
+            Basic parsed data structure or None
+        """
+        try:
+            print("🔄 Using fallback parsing method...")
+            
+            # Simple prompt for basic extraction
+            fallback_prompt = f"""
+Extract questions from this text and format as JSON:
+
+{ocr_text}
+
+Return only a JSON object with this structure:
+{{
+  "metadata": {{
+    "subject": "string or null",
+    "school_name": "string or null",
+    "booklet_type": "string or null",
+    "total_marks": "string or null",
+    "time_limit": "string or null",
+    "general_instructions": "string or null"
+  }},
+  "questions": [
+    {{
+      "question_number": "string",
+      "question_text": "string",
+      "options": {{}},
+      "marks": "string or null",
+      "question_type": "string",
+      "image_references_in_text": [],
+      "image_links_used": []
+    }}
+  ],
+  "unmatched_image_links": []
+}}
+"""
+            
+            response = self.model.generate_content(
+                fallback_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.1,
+                    max_output_tokens=4096,
+                    response_mime_type="application/json"
+                )
+            )
+            
+            if response and response.text:
+                try:
+                    parsed_data = json.loads(response.text)
+                    if self.validate_parsed_data(parsed_data):
+                        print("✅ Fallback parsing successful")
+                        return parsed_data
+                except json.JSONDecodeError:
+                    pass
+            
+            print("❌ Fallback parsing failed")
+            return None
+            
+        except Exception as e:
+            print(f"❌ Fallback parsing error: {e}")
+            return None
