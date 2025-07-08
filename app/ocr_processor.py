@@ -29,9 +29,27 @@ class OCRProcessor:
     
     def __init__(self):
         """Initialize OCR processor with all components."""
-        self.llm_parser = LLMParser()
-        self.db_manager = DatabaseManager()
-        self.image_processor = ImageProcessor()
+        try:
+            self.llm_parser = LLMParser()
+            self.db_manager = DatabaseManager()
+            self.image_processor = ImageProcessor()
+            print("✅ Using full database manager")
+        except Exception as e:
+            print(f"⚠️  Full components failed ({e}), using simplified versions...")
+            try:
+                # Use simplified components that don't require external dependencies
+                from app.simple_database_manager import SimpleDatabaseManager
+                self.db_manager = SimpleDatabaseManager()
+                print("✅ Using simplified database manager")
+                
+                # For LLM and image processor, we'll need similar fallbacks
+                # For now, set them to None and handle gracefully
+                self.llm_parser = None
+                self.image_processor = None
+                print("⚠️  LLM and image processing disabled due to missing dependencies")
+            except Exception as e2:
+                print(f"❌ Even simplified components failed: {e2}")
+                raise
         
         # OCR settings for educational content with fallback configs
         self.ocr_configs = [
@@ -91,15 +109,20 @@ class OCRProcessor:
             
             # Step 1: Extract images from PDF
             print("📸 STEP 1: Extracting images from PDF...")
-            image_info_list, image_links_list = self.image_processor.extract_images_from_pdf(
-                pdf_path, source_filename
-            )
-            
-            self.processing_stats['images_extracted'] = len(image_info_list)
-            
-            # Save image information to database
-            for image_info in image_info_list:
-                self.db_manager.save_image_info(image_info)
+            if self.image_processor is not None:
+                image_info_list, image_links_list = self.image_processor.extract_images_from_pdf(
+                    pdf_path, source_filename
+                )
+                
+                self.processing_stats['images_extracted'] = len(image_info_list)
+                
+                # Save image information to database
+                for image_info in image_info_list:
+                    self.db_manager.save_image_info(image_info)
+            else:
+                print("⚠️  Image processing disabled - skipping image extraction")
+                image_info_list, image_links_list = [], []
+                self.processing_stats['images_extracted'] = 0
             
             # Step 2: Perform OCR on the PDF
             print("\n🔍 STEP 2: Performing OCR extraction...")
@@ -113,20 +136,27 @@ class OCRProcessor:
             
             # Step 3: Create image links for LLM processing
             print("\n🔗 STEP 3: Preparing image links for LLM...")
-            formatted_image_links = self.image_processor.create_image_links_array(image_info_list)
-            
-            print(f"📋 Created {len(formatted_image_links)} image link variations")
+            if self.image_processor is not None:
+                formatted_image_links = self.image_processor.create_image_links_array(image_info_list)
+                print(f"📋 Created {len(formatted_image_links)} image link variations")
+            else:
+                formatted_image_links = []
+                print("⚠️  Image processing disabled - no image links created")
             
             # Step 4: Parse with enhanced LLM
             print("\n🧠 STEP 4: Enhanced LLM parsing with image support...")
-            parsed_data = self.llm_parser.parse_questions_enhanced(
-                extracted_text, 
-                formatted_image_links
-            )
-            
-            if not parsed_data:
-                print("⚠️  Enhanced parsing failed, trying fallback...")
-                parsed_data = self.llm_parser.fallback_parse_questions(extracted_text)
+            if self.llm_parser is not None:
+                parsed_data = self.llm_parser.parse_questions_enhanced(
+                    extracted_text, 
+                    formatted_image_links
+                )
+                
+                if not parsed_data:
+                    print("⚠️  Enhanced parsing failed, trying fallback...")
+                    parsed_data = self.llm_parser.fallback_parse_questions(extracted_text)
+            else:
+                print("⚠️  LLM processing disabled - creating basic parsed data structure")
+                parsed_data = self.create_basic_parsed_data(extracted_text, source_filename)
             
             if not parsed_data:
                 print("❌ All parsing methods failed")
@@ -134,7 +164,10 @@ class OCRProcessor:
             
             # Step 5: Enhance image matching
             print("\n🔍 STEP 5: Enhancing image reference matching...")
-            parsed_data = self.llm_parser.enhance_image_matching(parsed_data, image_info_list)
+            if self.llm_parser is not None:
+                parsed_data = self.llm_parser.enhance_image_matching(parsed_data, image_info_list)
+            else:
+                print("⚠️  LLM processing disabled - skipping image matching enhancement")
             
             # Step 6: Create image mappings for database storage
             print("\n💾 STEP 6: Creating image mappings...")
@@ -451,6 +484,53 @@ class OCRProcessor:
             True if successful, False otherwise
         """
         return self.process_pdf_comprehensive(pdf_path, source_filename)
+    
+    def create_basic_parsed_data(self, extracted_text: str, source_filename: str) -> Dict:
+        """
+        Create basic parsed data structure when LLM processing is unavailable.
+        
+        Args:
+            extracted_text: Raw text from OCR
+            source_filename: Name of the source file
+            
+        Returns:
+            Basic parsed data structure
+        """
+        try:
+            # Create a basic structure when LLM is not available
+            basic_data = {
+                'metadata': {
+                    'subject': None,
+                    'school_name': None,
+                    'booklet_type': None,
+                    'total_marks': None,
+                    'time_limit': None,
+                    'general_instructions': extracted_text[:500] if extracted_text else None  # First 500 chars as instructions
+                },
+                'questions': [
+                    {
+                        'question_number': '1',
+                        'question_text': extracted_text if extracted_text else 'No text extracted',
+                        'options': {},
+                        'marks': None,
+                        'question_type': 'General',
+                        'image_references_in_text': [],
+                        'image_links_used': []
+                    }
+                ],
+                'unmatched_image_links': []
+            }
+            
+            print(f"📋 Created basic parsed data structure (LLM unavailable)")
+            return basic_data
+            
+        except Exception as e:
+            print(f"❌ Error creating basic parsed data: {e}")
+            return {
+                'metadata': {},
+                'questions': [],
+                'unmatched_image_links': []
+            }
     
     def extract_text_with_confidence(self, pdf_path: str) -> Tuple[str, float]:
         """
