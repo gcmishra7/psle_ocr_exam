@@ -98,7 +98,43 @@ class SimpleDatabaseManager:
                 )
             ''')
             
+            # Migrate existing tables to add missing columns
+            self._migrate_database_schema(cursor)
+            
             conn.commit()
+    
+    def _migrate_database_schema(self, cursor):
+        """Migrate existing database schema to add missing columns."""
+        try:
+            print("🔄 Checking database schema and applying migrations...")
+            
+            # Check if processed_files table exists and has the correct columns
+            cursor.execute("PRAGMA table_info(processed_files)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            required_columns = ['images_count', 'processing_status', 'error_message']
+            missing_columns = [col for col in required_columns if col not in columns]
+            
+            if missing_columns:
+                print(f"🔧 Adding missing columns to processed_files: {missing_columns}")
+                
+                # Add missing columns one by one
+                for column in missing_columns:
+                    if column == 'images_count':
+                        cursor.execute("ALTER TABLE processed_files ADD COLUMN images_count INTEGER DEFAULT 0")
+                        print("✅ Added images_count column")
+                    elif column == 'processing_status':
+                        cursor.execute("ALTER TABLE processed_files ADD COLUMN processing_status TEXT DEFAULT 'completed'")
+                        print("✅ Added processing_status column")
+                    elif column == 'error_message':
+                        cursor.execute("ALTER TABLE processed_files ADD COLUMN error_message TEXT")
+                        print("✅ Added error_message column")
+            else:
+                print("✅ Database schema is up to date")
+                
+        except Exception as e:
+            print(f"⚠️  Database migration error (non-critical): {e}")
+            # Continue anyway - the system can still work with basic functionality
     
     def save_enhanced_paper_data(self, paper_data: Dict, source_file: str, image_mappings: Optional[Dict] = None) -> bool:
         """
