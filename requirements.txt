@@ -22,6 +22,7 @@ torch>=2.0.0
 
 # Web framework and UI
 streamlit>=1.28.0
+gradio>=4.0.0
 pandas>=2.1.0
 
 # Database and data handling
