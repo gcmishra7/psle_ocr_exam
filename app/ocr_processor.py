@@ -482,7 +482,7 @@ class OCRProcessor:
     
     def process_pdf(self, pdf_path: str, source_filename: Optional[str] = None) -> bool:
         """
-        Main PDF processing method - uses multimodal approach with Llama Parse and vision models.
+        Main PDF processing method - uses smart content extraction with multimodal AI.
         Includes automatic cleanup for reprocessing files.
         
         Args:
@@ -496,52 +496,196 @@ class OCRProcessor:
             source_filename = Path(pdf_path).name
             
         try:
-            print(f"\n🚀 STARTING MULTIMODAL PDF PROCESSING: {source_filename}")
+            print(f"\n🚀 STARTING ENHANCED PDF PROCESSING: {source_filename}")
             print("=" * 80)
             
-            # Try to use multimodal parser first
+            # Step 1: Smart content extraction
+            print("🔍 Step 1: Smart Content Extraction...")
+            try:
+                from app.smart_content_extractor import SmartContentExtractor
+                smart_extractor = SmartContentExtractor()
+                image_info_list, image_links = smart_extractor.extract_smart_content(pdf_path, source_filename)
+                print(f"✅ Smart extraction completed: {len(image_info_list)} content items found")
+            except ImportError:
+                print("⚠️  Smart content extractor not available, using basic image extraction...")
+                if self.image_processor:
+                    image_info_list, image_links = self.image_processor.extract_images_from_pdf(pdf_path, source_filename)
+                else:
+                    image_info_list, image_links = [], []
+            except Exception as e:
+                print(f"⚠️  Smart extraction failed ({e}), falling back to basic extraction...")
+                if self.image_processor:
+                    image_info_list, image_links = self.image_processor.extract_images_from_pdf(pdf_path, source_filename)
+                else:
+                    image_info_list, image_links = [], []
+
+            # Step 2: Try multimodal parsing
+            print("🎯 Step 2: Advanced Text Processing...")
             try:
                 from app.llama_multimodal_parser import LlamaMultimodalParser
                 multimodal_parser = LlamaMultimodalParser()
-                
-                print("🎯 Using Llama Parse + Vision Models for enhanced processing...")
-                parsed_data, image_info_list = multimodal_parser.process_pdf_multimodal(pdf_path, source_filename)
+                parsed_data, _ = multimodal_parser.process_pdf_multimodal(pdf_path, source_filename)
                 
                 if parsed_data and parsed_data.get('questions'):
-                    print(f"✅ Multimodal processing completed: {len(parsed_data['questions'])} questions")
-                    
-                    # Save to enhanced database
-                    success = self.db_manager.save_enhanced_paper_data(
-                        parsed_data, source_filename, None
-                    )
-                    
-                    if success:
-                        # Also save individual image info
-                        if hasattr(self.db_manager, 'save_image_info'):
-                            for image_info in image_info_list:
-                                self.db_manager.save_image_info(image_info)
-                        
-                        self._print_multimodal_summary(source_filename, parsed_data, image_info_list)
-                        return True
-                    else:
-                        print("❌ Failed to save to database")
-                        return False
+                    print(f"✅ Multimodal text processing completed: {len(parsed_data['questions'])} questions")
                 else:
-                    print("⚠️  Multimodal processing yielded no results, falling back...")
-                    return self.process_pdf_comprehensive(pdf_path, source_filename)
+                    print("⚠️  Multimodal processing yielded no results, using fallback...")
+                    parsed_data = self._fallback_text_processing(pdf_path, source_filename)
                     
             except ImportError:
-                print("⚠️  Multimodal parser dependencies not available, using comprehensive processing...")
-                return self.process_pdf_comprehensive(pdf_path, source_filename)
+                print("⚠️  Multimodal parser not available, using fallback processing...")
+                parsed_data = self._fallback_text_processing(pdf_path, source_filename)
             except Exception as e:
-                print(f"⚠️  Multimodal processing failed ({e}), falling back to comprehensive...")
-                return self.process_pdf_comprehensive(pdf_path, source_filename)
+                print(f"⚠️  Multimodal processing failed ({e}), using fallback...")
+                parsed_data = self._fallback_text_processing(pdf_path, source_filename)
+
+            # Step 3: Enhance with smart content
+            if parsed_data:
+                print("🔗 Step 3: Enhancing questions with smart content...")
+                self._enhance_questions_with_smart_content(parsed_data, image_info_list)
+            
+            # Step 4: Save to database
+            print("💾 Step 4: Saving to enhanced database...")
+            if parsed_data:
+                success = self.db_manager.save_enhanced_paper_data(parsed_data, source_filename, None)
+                
+                if success:
+                    # Save image info
+                    if hasattr(self.db_manager, 'save_image_info'):
+                        for image_info in image_info_list:
+                            self.db_manager.save_image_info(image_info)
+                    
+                    self._print_enhanced_summary(source_filename, parsed_data, image_info_list)
+                    return True
+                else:
+                    print("❌ Failed to save to database")
+                    return False
+            else:
+                print("❌ No parsed data to save")
+                return False
                 
         except Exception as e:
             print(f"❌ Error in PDF processing: {e}")
             import traceback
             traceback.print_exc()
             return False
+    
+    def _fallback_text_processing(self, pdf_path: str, source_filename: str) -> Optional[Dict]:
+        """Fallback text processing when multimodal parsing fails."""
+        try:
+            # Extract text using basic OCR
+            text_content = self.extract_text_from_pdf(pdf_path)
+            
+            if not text_content:
+                print("❌ No text content extracted")
+                return None
+            
+            # Use LLM parser if available
+            if self.llm_parser:
+                parsed_data = self.llm_parser.parse_questions_enhanced(text_content, [])
+                
+                if not parsed_data:
+                    parsed_data = self.create_basic_parsed_data(text_content, source_filename)
+            else:
+                parsed_data = self.create_basic_parsed_data(text_content, source_filename)
+            
+            return parsed_data
+            
+        except Exception as e:
+            print(f"❌ Error in fallback text processing: {e}")
+            return None
+    
+    def _enhance_questions_with_smart_content(self, parsed_data: Dict, image_info_list: List[Dict]):
+        """Enhance parsed questions with smart content extraction results."""
+        try:
+            questions = parsed_data.get('questions', [])
+            
+            if not image_info_list:
+                return
+            
+            # Create mapping of content by page and type
+            content_by_page = {}
+            for content in image_info_list:
+                page_num = content.get('page_number', 0)
+                if page_num not in content_by_page:
+                    content_by_page[page_num] = []
+                content_by_page[page_num].append(content)
+            
+            # Enhanced matching for questions
+            enhanced_count = 0
+            for question in questions:
+                question_num = question.get('question_number', '')
+                existing_links = question.get('image_links_used', [])
+                new_links = []
+                
+                # Add smart content based on different strategies
+                for page_num, page_content in content_by_page.items():
+                    for content in page_content:
+                        content_type = content.get('content_type', '')
+                        content_path = f"/data/{content['relative_path']}"
+                        
+                        # Add high-value content (diagrams, tables, equations)
+                        if content_type in ['diagram', 'table', 'equation'] and content_path not in existing_links:
+                            new_links.append(content_path)
+                
+                # Update question with enhanced content
+                if new_links:
+                    all_links = existing_links + new_links
+                    question['image_links_used'] = list(set(all_links))  # Remove duplicates
+                    enhanced_count += 1
+                    print(f"🔗 Enhanced Q{question_num} with {len(new_links)} smart content items")
+            
+            if enhanced_count > 0:
+                print(f"✅ Enhanced {enhanced_count} questions with smart content")
+            
+        except Exception as e:
+            print(f"⚠️  Error enhancing questions with smart content: {e}")
+    
+    def _print_enhanced_summary(self, source_filename: str, parsed_data: Dict, image_info_list: List[Dict]):
+        """Print enhanced summary with smart content information."""
+        print("\n" + "=" * 80)
+        print("🎉 ENHANCED PROCESSING COMPLETED!")
+        print("=" * 80)
+        
+        metadata = parsed_data.get('metadata', {})
+        questions = parsed_data.get('questions', [])
+        
+        print(f"📄 File: {source_filename}")
+        print(f"🧠 Method: Smart Content + Multimodal AI")
+        print(f"📊 Questions: {len(questions)}")
+        print(f"📸 Smart Content Items: {len(image_info_list)}")
+        
+        # Content type breakdown
+        content_types = {}
+        for content in image_info_list:
+            content_type = content.get('content_type', 'unknown')
+            content_types[content_type] = content_types.get(content_type, 0) + 1
+        
+        if content_types:
+            print(f"🔍 Content Types Found:")
+            for content_type, count in content_types.items():
+                print(f"  • {content_type.title()}: {count}")
+        
+        # Metadata
+        print("\n📋 EXTRACTED METADATA:")
+        for key, value in metadata.items():
+            if value and str(value) != 'Unknown':
+                print(f"  • {key.replace('_', ' ').title()}: {value}")
+        
+        # Questions with smart content
+        questions_with_content = sum(1 for q in questions if q.get('image_links_used'))
+        
+        print(f"\n❓ QUESTIONS BREAKDOWN:")
+        question_types = {}
+        for question in questions:
+            q_type = question.get('question_type', 'Unknown')
+            question_types[q_type] = question_types.get(q_type, 0) + 1
+        
+        for q_type, count in question_types.items():
+            print(f"  • {q_type}: {count}")
+        print(f"  • Questions with Smart Content: {questions_with_content}")
+        
+        print("=" * 80)
     
     def _print_multimodal_summary(self, source_filename: str, parsed_data: Dict, image_info_list: List[Dict]):
         """Print summary for multimodal processing results."""

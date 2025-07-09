@@ -7,8 +7,9 @@ Pillow>=10.1.0
 llama-parse>=0.4.0
 llama-index>=0.10.0
 
-# OpenCV (optional, with fallback)
+# OpenCV with enhanced features for smart content extraction
 opencv-python-headless>=4.8.0
+opencv-contrib-python-headless>=4.8.0
 
 # Multimodal AI capabilities
 google-generativeai>=0.3.0
